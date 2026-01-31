@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Finger Skeleton Recorder</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1>Finger Skeleton Recorder</h1>
+        <p>Records a 5s clip with hand skeleton landmarks.</p>
+      </header>
+
+      <section class="controls">
+        <button id="startCamera">Start Camera</button>
+        <button id="record5s" disabled>Record 10s</button>
+        <span id="status">Idle</span>
+      </section>
+
+      <section class="stage">
+        <div class="video-wrap">
+          <video id="video" playsinline muted></video>
+          <canvas id="composite"></canvas>
+          <canvas id="overlay"></canvas>
+        </div>
+        <aside class="data-panel">
+          <h2>Live data</h2>
+          <canvas id="sparkline" width="320" height="120"></canvas>
+          <pre id="liveData">No frames yet</pre>
+        </aside>
+      </section>
+
+      <section class="tips">
+        <p>Tip: Move one finger up and down in front of the camera for clear tracking.</p>
+      </section>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.min.js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
