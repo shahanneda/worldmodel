@@ -4,18 +4,29 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Finger Skeleton Recorder</title>
-    <link rel="stylesheet" href="styles.css" />
+    <link rel="stylesheet" href="styles.css?v=20260313-2" />
   </head>
   <body>
     <main>
       <header>
         <h1>Finger Skeleton Recorder</h1>
-        <p>Records a 5s clip with hand skeleton landmarks.</p>
+        <p>Records a configurable clip with hand skeleton landmarks.</p>
       </header>
 
       <section class="controls">
         <button id="startCamera">Start Camera</button>
-        <button id="record5s" disabled>Record 10s</button>
+        <label class="field" for="durationSeconds">
+          <span>Duration (s)</span>
+          <input
+            id="durationSeconds"
+            type="number"
+            min="1"
+            max="600"
+            step="1"
+            value="10"
+          />
+        </label>
+        <button id="recordClip" disabled>Record 10s</button>
         <span id="status">Idle</span>
       </section>
 
@@ -41,6 +52,6 @@
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/selfie_segmentation.min.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=20260313-2"></script>
   </body>
 </html>

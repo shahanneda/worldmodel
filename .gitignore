@@ -1,4 +1,9 @@
 data/
 model/checkpoints/
+__pycache__/
+*.pyc
 *.pt
 *.pth
+webgpu-inference/model/*.onnx
+webgpu-inference/model/*.onnx.data
+webgpu-inference/model/*.bin

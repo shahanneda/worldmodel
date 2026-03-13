@@ -66,6 +66,28 @@ button:not(:disabled):hover {
   box-shadow: 0 12px 28px var(--shadow);
 }
 
+.field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b9c2cf;
+  font-size: 0.95rem;
+}
+
+.field input {
+  width: 84px;
+  background: rgba(17, 24, 38, 0.92);
+  color: var(--text);
+  border: 1px solid rgba(123, 223, 242, 0.25);
+  border-radius: 999px;
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.field input:disabled {
+  opacity: 0.6;
+}
+
 #status {
   font-size: 0.95rem;
   color: #b9c2cf;
@@ -101,7 +123,7 @@ canvas {
 }
 
 #video {
-  opacity: 0;
+  opacity: 1;
 }
 
 canvas {
