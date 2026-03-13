@@ -1,5 +1,7 @@
 const startCameraBtn = document.getElementById("startCamera");
-const recordBtn = document.getElementById("record5s");
+const recordBtn =
+  document.getElementById("recordClip") || document.getElementById("record5s");
+const durationInputEl = document.getElementById("durationSeconds");
 const statusEl = document.getElementById("status");
 const videoEl = document.getElementById("video");
 const compositeEl = document.getElementById("composite");
@@ -20,6 +22,7 @@ let lastHandsResult = null;
 let liveHistory = [];
 const maxHistory = 180;
 let lastSegmentationResult = null;
+const defaultRecordingDurationSeconds = 10;
 
 const hands = new Hands({
   locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`,
@@ -46,18 +49,45 @@ function setStatus(text) {
   statusEl.textContent = text;
 }
 
+function getRecordingDurationSeconds() {
+  if (!durationInputEl) return defaultRecordingDurationSeconds;
+  const requestedSeconds = Number(durationInputEl.value);
+  const seconds = Number.isFinite(requestedSeconds)
+    ? Math.min(Math.max(Math.round(requestedSeconds), 1), 600)
+    : defaultRecordingDurationSeconds;
+  durationInputEl.value = String(seconds);
+  return seconds;
+}
+
+function updateRecordButtonLabel() {
+  if (!recordBtn) return;
+  const seconds = getRecordingDurationSeconds();
+  recordBtn.textContent = `Record ${seconds}s`;
+}
+
 async function startCamera() {
   if (stream) return;
+
+  let mediaStream = null;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({
+    mediaStream = await navigator.mediaDevices.getUserMedia({
       video: { width: 1280, height: 720 },
       audio: false,
     });
+  } catch (err) {
+    console.error(err);
+    setStatus(`Camera error: ${err?.name || "UnknownError"}`);
+    return;
+  }
+
+  stream = mediaStream;
+
+  try {
     videoEl.srcObject = stream;
     await videoEl.play();
     resizeCanvasToVideo();
     window.addEventListener("resize", resizeCanvasToVideo);
-    recordBtn.disabled = false;
+    if (recordBtn) recordBtn.disabled = false;
     setStatus("Camera ready");
     try {
       await hands.send({ image: videoEl });
@@ -81,7 +111,7 @@ async function startCamera() {
     camera.start();
   } catch (err) {
     console.error(err);
-    setStatus("Camera access denied");
+    setStatus(`Startup error: ${err?.name || "UnknownError"}`);
   }
 }
 
@@ -249,9 +279,11 @@ function downloadBlob(blob, filename) {
 }
 
 function startRecording() {
-  if (!stream || recording) return;
+  if (!stream || recording || !recordBtn) return;
+  const durationSeconds = getRecordingDurationSeconds();
   recording = true;
   landmarksLog = [];
+  if (durationInputEl) durationInputEl.disabled = true;
 
   const mimeType = MediaRecorder.isTypeSupported("video/webm;codecs=vp9")
     ? "video/webm;codecs=vp9"
@@ -276,18 +308,22 @@ function startRecording() {
 
     setStatus("Recording saved");
     recordBtn.disabled = false;
+    if (durationInputEl) durationInputEl.disabled = false;
+    updateRecordButtonLabel();
     recording = false;
   };
 
   recorder.start(100);
-  setStatus("Recording... 10s");
+  setStatus(`Recording... ${durationSeconds}s`);
   recordBtn.disabled = true;
 
   recordTimeout = setTimeout(() => {
     recorder.stop();
     clearTimeout(recordTimeout);
-  }, 10000);
+  }, durationSeconds * 1000);
 }
 
+if (durationInputEl) durationInputEl.addEventListener("input", updateRecordButtonLabel);
 startCameraBtn.addEventListener("click", startCamera);
-recordBtn.addEventListener("click", startRecording);
+if (recordBtn) recordBtn.addEventListener("click", startRecording);
+updateRecordButtonLabel();

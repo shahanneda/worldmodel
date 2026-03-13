@@ -1,0 +1,48 @@
+{
+  "modelName": "CoordinateToImageUNet",
+  "sourceCheckpoint": "model/checkpoints/coord_to_image_unet_2026-03-13T19-20-32Z.pt",
+  "createdAtUtc": "2026-03-13T20:41:35Z",
+  "precision": "fp16",
+  "opset": 18,
+  "imageSize": 128,
+  "graphUrl": "./coord_to_image_unet_2026-03-13T19-20-32Z_webgpu_fp16.onnx",
+  "graphBytes": 111048,
+  "externalData": [
+    {
+      "path": "coord_to_image_unet_2026-03-13T19-20-32Z_webgpu_fp16.onnx.data",
+      "url": "./coord_to_image_unet_2026-03-13T19-20-32Z_webgpu_fp16.onnx.data",
+      "bytes": 399982592
+    }
+  ],
+  "totalModelBytes": 400093640,
+  "input": {
+    "name": "coords",
+    "dtype": "float32",
+    "shape": [
+      1,
+      2
+    ]
+  },
+  "output": {
+    "name": "image",
+    "dtype": "float32",
+    "shape": [
+      1,
+      3,
+      128,
+      128
+    ]
+  },
+  "preferredExecutionProviders": [
+    "webgpu",
+    "wasm"
+  ],
+  "verification": {
+    "coords": [
+      0.25,
+      0.75
+    ],
+    "max_abs_diff": 0.000505983829498291,
+    "mean_abs_diff": 9.627691724745091e-06
+  }
+}
