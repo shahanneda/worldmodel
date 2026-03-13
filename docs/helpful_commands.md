@@ -169,7 +169,6 @@ PY
 
 ```bash
 /venv/main/bin/python3 inference/server.py \
-  --checkpoint model/checkpoints/coord_to_image_unet.pt \
   --host 0.0.0.0 \
   --port 8000
 ```

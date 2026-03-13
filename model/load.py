@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable, Optional
+from typing import Callable, Iterable, Optional, Sequence
 
 import cv2
 import torch
@@ -19,6 +19,13 @@ class FingerSampleRecord:
     y_px: Optional[int]
     x_norm: Optional[float]
     y_norm: Optional[float]
+
+
+@dataclass(frozen=True)
+class FingerSample:
+    source_dir: Path
+    frame_path: Path
+    record: FingerSampleRecord
 
 
 def _load_records(index_json_path: Path) -> list[FingerSampleRecord]:
@@ -58,59 +65,104 @@ def _load_frame_paths(segmented_frames_dir: Path) -> list[Path]:
     return frame_paths
 
 
+def _is_processed_dir(path: Path) -> bool:
+    return (path / "index_finger_positions.json").exists() and (path / "segmented_frames").is_dir()
+
+
+def discover_processed_dirs(
+    root: str | Path = "data",
+    *,
+    glob_pattern: str = "processed-finger*",
+) -> list[Path]:
+    root = Path(root)
+    if _is_processed_dir(root):
+        return [root]
+    if not root.exists():
+        raise FileNotFoundError(f"Could not find data root: {root}")
+
+    processed_dirs = sorted(
+        path for path in root.glob(glob_pattern) if path.is_dir() and _is_processed_dir(path)
+    )
+    if not processed_dirs:
+        raise FileNotFoundError(f"No processed dataset directories found under {root}")
+    return processed_dirs
+
+
+def _resolve_processed_dirs(
+    processed_dir: str | Path | Sequence[str | Path],
+    *,
+    glob_pattern: str = "processed-finger*",
+) -> list[Path]:
+    if isinstance(processed_dir, (str, Path)):
+        return discover_processed_dirs(processed_dir, glob_pattern=glob_pattern)
+
+    resolved: list[Path] = []
+    seen: set[Path] = set()
+    for item in processed_dir:
+        for path in discover_processed_dirs(item, glob_pattern=glob_pattern):
+            if path not in seen:
+                seen.add(path)
+                resolved.append(path)
+    if not resolved:
+        raise FileNotFoundError("No processed dataset directories were resolved.")
+    return resolved
+
+
 class FingerVideoDataset(Dataset[tuple[Tensor, Tensor]]):
     """
-    Returns `(coords, frame)` so this works cleanly with PyTorch training loops:
+    Returns `(coords, frame)` for training loops.
 
     - `coords`: tensor shaped `(2,)`
     - `frame`: tensor shaped `(C, H, W)` in `[0, 1]`
 
-    By default `coords` are normalized to `[0, 1]`.
+    By default:
+    - coordinates are normalized to `[0, 1]`
+    - images are resized to `128 x 128`
+    - passing `processed_dir='data'` uses every matching processed dataset under `data/`
     """
 
     def __init__(
         self,
-        processed_dir: str | Path,
+        processed_dir: str | Path | Sequence[str | Path] = "data",
         *,
         image_size: tuple[int, int] | None = (128, 128),
         normalized_coords: bool = True,
         drop_missing: bool = True,
         transform: Optional[Callable[[Tensor], Tensor]] = None,
+        glob_pattern: str = "processed-finger*",
     ) -> None:
-        self.processed_dir = Path(processed_dir)
-        self.index_json_path = self.processed_dir / "index_finger_positions.json"
-        self.segmented_frames_dir = self.processed_dir / "segmented_frames"
-
-        if not self.index_json_path.exists():
-            raise FileNotFoundError(f"Missing {self.index_json_path}")
-        if not self.segmented_frames_dir.exists():
-            raise FileNotFoundError(f"Missing {self.segmented_frames_dir}")
-
-        self.records = _load_records(self.index_json_path)
-        self.frame_paths = _load_frame_paths(self.segmented_frames_dir)
+        self.processed_dirs = _resolve_processed_dirs(processed_dir, glob_pattern=glob_pattern)
         self.image_size = image_size
         self.normalized_coords = normalized_coords
         self.transform = transform
 
-        if len(self.records) != len(self.frame_paths):
-            raise ValueError(
-                "Frame count mismatch between JSON positions and segmented frames: "
-                f"{len(self.records)} records vs {len(self.frame_paths)} frame files"
-            )
+        self.samples: list[FingerSample] = []
+        for directory in self.processed_dirs:
+            records = _load_records(directory / "index_finger_positions.json")
+            frame_paths = _load_frame_paths(directory / "segmented_frames")
 
-        self.sample_indices = list(range(len(self.records)))
-        if drop_missing:
-            self.sample_indices = [
-                idx
-                for idx, record in enumerate(self.records)
-                if record.x_px is not None and record.y_px is not None
-            ]
+            if len(records) != len(frame_paths):
+                raise ValueError(
+                    "Frame count mismatch between JSON positions and segmented frames: "
+                    f"{len(records)} records vs {len(frame_paths)} frame files in {directory}"
+                )
 
-        if not self.sample_indices:
-            raise ValueError("Dataset is empty after filtering missing fingertip coordinates.")
+            for record, frame_path in zip(records, frame_paths):
+                if drop_missing and (record.x_px is None or record.y_px is None):
+                    continue
+                self.samples.append(
+                    FingerSample(
+                        source_dir=directory,
+                        frame_path=frame_path,
+                        record=record,
+                    )
+                )
+
+        if not self.samples:
+            raise ValueError("Dataset is empty after resolving processed dirs and filtering samples.")
 
     def __len__(self) -> int:
-        return len(self.sample_indices)
+        return len(self.samples)
 
     def _coords_tensor(self, record: FingerSampleRecord) -> Tensor:
         if self.normalized_coords:
@@ -140,17 +192,14 @@ class FingerVideoDataset(Dataset[tuple[Tensor, Tensor]]):
         return frame
 
     def __getitem__(self, index: int) -> tuple[Tensor, Tensor]:
-        sample_index = self.sample_indices[index]
-        record = self.records[sample_index]
-        frame_path = self.frame_paths[sample_index]
-
-        coords = self._coords_tensor(record)
-        frame = self._frame_tensor(frame_path)
+        sample = self.samples[index]
+        coords = self._coords_tensor(sample.record)
+        frame = self._frame_tensor(sample.frame_path)
         return coords, frame
 
 
 def build_finger_dataloader(
-    processed_dir: str | Path,
+    processed_dir: str | Path | Sequence[str | Path] = "data",
     *,
     batch_size: int = 8,
     shuffle: bool = True,
@@ -160,6 +209,7 @@ def build_finger_dataloader(
     drop_missing: bool = True,
     transform: Optional[Callable[[Tensor], Tensor]] = None,
     pin_memory: bool = True,
+    glob_pattern: str = "processed-finger*",
 ) -> DataLoader[tuple[Tensor, Tensor]]:
     dataset = FingerVideoDataset(
         processed_dir=processed_dir,
@@ -167,6 +217,7 @@ def build_finger_dataloader(
         normalized_coords=normalized_coords,
         drop_missing=drop_missing,
         transform=transform,
+        glob_pattern=glob_pattern,
     )
     return DataLoader(
         dataset,
@@ -178,20 +229,11 @@ def build_finger_dataloader(
 
 
 def demo_batch(
-    processed_dir: str | Path = "data/processed-finger-sam-2026-01-30T22-41-47-949Z",
+    processed_dir: str | Path | Sequence[str | Path] = "data",
     *,
     batch_size: int = 4,
     image_size: tuple[int, int] | None = (128, 128),
 ) -> tuple[Tensor, Tensor]:
-    """
-    Quick sanity helper for notebooks:
-
-    >>> coords, frames = demo_batch()
-    >>> coords.shape
-    torch.Size([4, 2])
-    >>> frames.shape
-    torch.Size([4, 3, H, W])
-    """
     loader = build_finger_dataloader(
         processed_dir=processed_dir,
         batch_size=batch_size,

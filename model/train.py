@@ -7,6 +7,7 @@ from typing import Any, Optional
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
+from torch.amp import GradScaler, autocast
 from torch.utils.data import DataLoader, random_split
 
 from model.checkpoints import latest_checkpoint, make_checkpoint_path
@@ -17,6 +18,7 @@ from model.load import FingerVideoDataset
 class TrainingHistory:
     train_losses: list[float]
     val_losses: list[float]
+    test_losses: list[float]
 
 
 def reconstruction_loss(prediction: Tensor, target: Tensor) -> Tensor:
@@ -25,15 +27,20 @@ def reconstruction_loss(prediction: Tensor, target: Tensor) -> Tensor:
     return l1 + 0.25 * mse
 
 
-def make_train_val_loaders(
-    processed_dir: str | Path,
+def make_train_val_test_loaders(
+    processed_dir: str | Path = "data",
     *,
     image_size: tuple[int, int] = (128, 128),
     batch_size: int = 16,
     val_fraction: float = 0.1,
+    test_fraction: float = 0.1,
     seed: int = 42,
     num_workers: int = 0,
-) -> tuple[DataLoader[tuple[Tensor, Tensor]], DataLoader[tuple[Tensor, Tensor]]]:
+) -> tuple[
+    DataLoader[tuple[Tensor, Tensor]],
+    DataLoader[tuple[Tensor, Tensor]],
+    DataLoader[tuple[Tensor, Tensor]],
+]:
     dataset = FingerVideoDataset(
         processed_dir=processed_dir,
         image_size=image_size,
@@ -41,10 +48,21 @@ def make_train_val_loaders(
         drop_missing=True,
     )
 
-    val_size = max(1, int(len(dataset) * val_fraction))
-    train_size = len(dataset) - val_size
+    test_size = int(len(dataset) * test_fraction)
+    val_size = int(len(dataset) * val_fraction)
+    if test_fraction > 0 and test_size == 0:
+        test_size = 1
+    if val_fraction > 0 and val_size == 0:
+        val_size = 1
+    train_size = len(dataset) - val_size - test_size
+    if train_size <= 0:
+        raise ValueError("Dataset is too small for the requested train/val/test split.")
     generator = torch.Generator().manual_seed(seed)
-    train_dataset, val_dataset = random_split(dataset, [train_size, val_size], generator=generator)
+    train_dataset, val_dataset, test_dataset = random_split(
+        dataset,
+        [train_size, val_size, test_size],
+        generator=generator,
+    )
 
     train_loader = DataLoader(
         train_dataset,
@@ -60,6 +78,34 @@ def make_train_val_loaders(
         num_workers=num_workers,
         pin_memory=True,
     )
+    test_loader = DataLoader(
+        test_dataset,
+        batch_size=batch_size,
+        shuffle=False,
+        num_workers=num_workers,
+        pin_memory=True,
+    )
+    return train_loader, val_loader, test_loader
+
+
+def make_train_val_loaders(
+    processed_dir: str | Path = "data",
+    *,
+    image_size: tuple[int, int] = (128, 128),
+    batch_size: int = 16,
+    val_fraction: float = 0.1,
+    seed: int = 42,
+    num_workers: int = 0,
+) -> tuple[DataLoader[tuple[Tensor, Tensor]], DataLoader[tuple[Tensor, Tensor]]]:
+    train_loader, val_loader, _ = make_train_val_test_loaders(
+        processed_dir=processed_dir,
+        image_size=image_size,
+        batch_size=batch_size,
+        val_fraction=val_fraction,
+        test_fraction=0.0,
+        seed=seed,
+        num_workers=num_workers,
+    )
     return train_loader, val_loader
 
 
@@ -69,6 +115,8 @@ def run_epoch(
     *,
     device: str,
     optimizer: Optional[torch.optim.Optimizer] = None,
+    use_amp: bool = False,
+    scaler: Optional[GradScaler] = None,
 ) -> float:
     training = optimizer is not None
     model.train(training)
@@ -81,13 +129,19 @@ def run_epoch(
         frames = frames.to(device, non_blocking=True)
 
         with torch.set_grad_enabled(training):
-            predictions = model(coords)
-            loss = reconstruction_loss(predictions, frames)
+            with autocast(device_type="cuda", enabled=use_amp):
+                predictions = model(coords)
+                loss = reconstruction_loss(predictions, frames)
 
         if training:
             optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            optimizer.step()
+            if use_amp and scaler is not None:
+                scaler.scale(loss).backward()
+                scaler.step(optimizer)
+                scaler.update()
+            else:
+                loss.backward()
+                optimizer.step()
 
         batch_size = coords.shape[0]
         total_loss += float(loss.detach().cpu()) * batch_size
@@ -100,22 +154,38 @@ def train_model(
     model: nn.Module,
     train_loader: DataLoader[tuple[Tensor, Tensor]],
     val_loader: DataLoader[tuple[Tensor, Tensor]],
+    test_loader: Optional[DataLoader[tuple[Tensor, Tensor]]] = None,
     *,
     device: str = "cuda",
     epochs: int = 20,
     lr: float = 1e-3,
 ) -> TrainingHistory:
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    history = TrainingHistory(train_losses=[], val_losses=[])
+    history = TrainingHistory(train_losses=[], val_losses=[], test_losses=[])
+    use_amp = device.startswith("cuda")
+    scaler = GradScaler("cuda", enabled=use_amp)
 
     model.to(device)
     for epoch in range(epochs):
-        train_loss = run_epoch(model, train_loader, device=device, optimizer=optimizer)
-        val_loss = run_epoch(model, val_loader, device=device)
+        train_loss = run_epoch(
+            model,
+            train_loader,
+            device=device,
+            optimizer=optimizer,
+            use_amp=use_amp,
+            scaler=scaler,
+        )
+        val_loss = run_epoch(model, val_loader, device=device, use_amp=use_amp)
+        test_loss = (
+            run_epoch(model, test_loader, device=device, use_amp=use_amp)
+            if test_loader is not None
+            else float("nan")
+        )
         history.train_losses.append(train_loss)
         history.val_losses.append(val_loss)
+        history.test_losses.append(test_loss)
         print(
-            f"epoch {epoch + 1:03d} | train_loss={train_loss:.6f} | val_loss={val_loss:.6f}",
+            f"epoch {epoch + 1:03d} | train_loss={train_loss:.6f} | val_loss={val_loss:.6f} | test_loss={test_loss:.6f}",
             flush=True,
         )
 
@@ -150,6 +220,7 @@ def save_checkpoint(
         payload["history"] = {
             "train_losses": history.train_losses,
             "val_losses": history.val_losses,
+            "test_losses": history.test_losses,
         }
     if extra is not None:
         payload["extra"] = extra
@@ -173,6 +244,7 @@ def load_checkpoint(
         history = TrainingHistory(
             train_losses=list(history_payload.get("train_losses", [])),
             val_losses=list(history_payload.get("val_losses", [])),
+            test_losses=list(history_payload.get("test_losses", [])),
         )
 
     extra = checkpoint.get("extra")
@@ -191,6 +263,7 @@ def train_or_load_model(
     model: nn.Module,
     train_loader: DataLoader[tuple[Tensor, Tensor]],
     val_loader: DataLoader[tuple[Tensor, Tensor]],
+    test_loader: Optional[DataLoader[tuple[Tensor, Tensor]]] = None,
     *,
     run_name: str = "coord_to_image_unet",
     checkpoint_root: str | Path = "model/checkpoints",
@@ -218,6 +291,7 @@ def train_or_load_model(
         model,
         train_loader,
         val_loader,
+        test_loader,
         device=device,
         epochs=epochs,
         lr=lr,

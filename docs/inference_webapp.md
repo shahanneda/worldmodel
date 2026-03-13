@@ -48,10 +48,11 @@ From the repo root:
 
 ```bash
 /venv/main/bin/python3 inference/server.py \
-  --checkpoint model/checkpoints/coord_to_image_unet.pt \
   --host 0.0.0.0 \
   --port 8000
 ```
+
+By default, the server now picks the newest `*.pt` file in `model/checkpoints/`.
 
 ### Optional flags
 

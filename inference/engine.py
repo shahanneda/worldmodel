@@ -19,6 +19,8 @@ class InferenceMetadata:
     checkpoint_path: str
     device: str
     image_size: int
+    base_channels: int
+    latent_channels: int
     training_extra: dict[str, Any]
 
 
@@ -53,8 +55,14 @@ class CoordinateToImageInference:
         checkpoint = torch.load(self.checkpoint_path, map_location="cpu")
         model_state_dict, extra = self._extract_checkpoint_parts(checkpoint)
         image_size = self._resolve_image_size(extra)
+        base_channels = int(extra.get("base_channels", 32))
+        latent_channels = int(extra.get("latent_channels", 256))
 
-        self.model = CoordinateToImageUNet(image_size=image_size)
+        self.model = CoordinateToImageUNet(
+            image_size=image_size,
+            base_channels=base_channels,
+            latent_channels=latent_channels,
+        )
         self.model.load_state_dict(model_state_dict)
         self.model.to(self.device)
         self.model.eval()
@@ -63,6 +71,8 @@ class CoordinateToImageInference:
             checkpoint_path=str(self.checkpoint_path),
             device=self.device,
             image_size=image_size,
+            base_channels=base_channels,
+            latent_channels=latent_channels,
             training_extra=extra,
         )
         self._lock = threading.Lock()
