@@ -2,6 +2,7 @@ const ORT_VERSION = "1.24.3";
 const DEFAULT_MANIFEST_URL = "./model/manifest.json";
 const STORAGE_KEY = "worldmodel.webgpu.manifestUrl";
 const CDN_WASM_BASE = `https://cdn.jsdelivr.net/npm/onnxruntime-web@${ORT_VERSION}/dist/`;
+const RUNTIME_CONFIG = window.WORLDMODEL_WEBGPU_CONFIG || {};
 
 const manifestUrlInput = document.getElementById("manifestUrlInput");
 const loadManifestButton = document.getElementById("loadManifestButton");
@@ -346,6 +347,10 @@ function initialManifestUrl() {
   const queryManifest = new URLSearchParams(window.location.search).get("manifest");
   if (queryManifest) {
     return resolveUrl(window.location.href, queryManifest);
+  }
+
+  if (typeof RUNTIME_CONFIG.manifestUrl === "string" && RUNTIME_CONFIG.manifestUrl.length > 0) {
+    return resolveUrl(window.location.href, RUNTIME_CONFIG.manifestUrl);
   }
 
   const savedManifest = localStorage.getItem(STORAGE_KEY);

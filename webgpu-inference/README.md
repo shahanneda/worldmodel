@@ -72,3 +72,27 @@ So the static frontend is ready, but GitHub Pages is only realistic if you:
 - train/export a substantially smaller browser model
 
 The page already supports a manifest URL that can point at another host.
+
+## S3 workflow
+
+There are now two helper scripts for S3:
+
+- `scripts/s3_configure_webgpu_public_access.py`
+  - applies a public-read bucket policy scoped to the model prefix
+  - applies bucket CORS rules for browser `GET` and `HEAD`
+- `scripts/s3_upload_webgpu_assets.py`
+  - uploads the ONNX files
+  - uploads a rewritten manifest with public S3 URLs
+  - writes `webgpu-inference/runtime-config.js` so the page loads that S3 manifest by default
+
+Example:
+
+```bash
+export S3_BUCKET=your-bucket
+export S3_PREFIX=worldmodel
+export WEBGPU_CORS_ALLOWED_ORIGINS='https://yourname.github.io,http://127.0.0.1:5174,http://localhost:5174'
+python scripts/s3_configure_webgpu_public_access.py
+python scripts/s3_upload_webgpu_assets.py
+```
+
+The upload script prints the public manifest URL after upload.

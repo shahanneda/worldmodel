@@ -15,7 +15,8 @@
       defer
       src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/ort.all.min.js"
     ></script>
-    <script defer src="./app.js?v=20260313-1"></script>
+    <script defer src="./runtime-config.js?v=20260313-2"></script>
+    <script defer src="./app.js?v=20260313-2"></script>
   </head>
   <body>
     <main class="shell">
@@ -49,8 +50,8 @@
             />
           </label>
           <p class="hint">
-            The default path is <code>./model/manifest.json</code>. Use a different URL if the
-            ONNX files live on another static host.
+            By default the page reads <code>runtime-config.js</code>. Use a different URL here if
+            the ONNX files live on another static host.
           </p>
           <div class="status-stack">
             <div class="metric">
