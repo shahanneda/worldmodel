@@ -1,63 +1,167 @@
-# Finger Video Processing Pipeline: Goal, Task, and Attempt Log
+# Finger Pipeline Status
 
-## What this project is trying to do
-Create a repeatable pipeline that takes a recorded finger-tracking video and its landmark JSON, then produces a clean dataset for downstream modeling/debugging.
+## Project status summary
 
-## Input data
-- Video: `data/finger-video-2026-01-30T22-41-47-949Z.webm`
-- Landmarks: `data/finger-landmarks-2026-01-30T22-41-47-949Z.json`
+The repo is now in this state:
 
-## Required task/output
-- Segment each frame so only the human remains, with a white background.
-- Create frame exports from the segmented result.
-- Create per-frame JSON with index-finger tip position (`x/y`), mapped to frame index.
-- Create a debug video from final segmented frames with a visible dot over the index finger position.
+### Data-generation pipeline
 
-## Current implementation
-- Script: `data-processing/process_finger_video.py`
-- Current outputs:
-- `segmented_frames/` (PNG frames)
-- `debug_frames/` (PNG frames with red dot overlay)
+Working:
+- raw video -> segmented frames
+- raw video -> binary masks
+- raw video -> debug frames and debug video
+- raw video + landmarks JSON -> fingertip coordinate JSON
+
+### Training stack
+
+Working:
+- processed dataset -> PyTorch loader
+- downsampled training frames -> coordinate-conditioned U-Net
+- train/validation split
+- basic training loop
+- checkpoint save/load support
+- local checkpoint management utility
+- S3 upload/download scripts for checkpoints
+- notebook orchestration
+- server-side inference webapp
+
+Not yet done:
+- generated sample saving during training
+- better conditioning than a single `(x, y)` point
+- image-only fingertip label generation
+
+## Overall goal
+
+The overall project goal is:
+
+1. Take a raw finger video.
+2. Turn it into a clean supervised dataset.
+3. Train models on top of that dataset.
+
+The current supervised pair is:
+
+- input: fingertip coordinate `(x, y)`
+- target: segmented frame
+
+## What has been done so far
+
+### Earlier attempts
+
+The original segmentation attempts used:
+
+- OpenCV background subtraction
+- MediaPipe Selfie Segmentation
+
+That path produced broken masks and was not acceptable.
+
+### Current segmentation implementation
+
+The current script is:
+
+```text
+data-processing/process_finger_video.py
+```
+
+The current stack is:
+
+- `torchvision` Mask R-CNN for coarse person masks
+- Meta Segment Anything for refinement
+- coarse-mask fallback when SAM drifts
+
+### Current processed output
+
+Current output directory:
+
+```text
+data/processed-finger-sam-2026-01-30T22-41-47-949Z/
+```
+
+Main artifacts:
+
+- `segmented_frames/`
+- `mask_frames/`
+- `debug_frames/`
 - `segmented_video.mp4`
 - `debug_video.mp4`
 - `index_finger_positions.json`
 
-## What we tried so far
-1. Initial pipeline build (OpenCV-based)
-- Used OpenCV background subtraction (`MOG2`) to separate foreground from background.
-- Extracted index-finger tip from MediaPipe-style landmark index `8`.
-- Wrote segmented frames, debug overlay frames, and JSON positions.
-- Result: pipeline structure worked, but segmentation quality was poor (fragmented/ghosty person mask).
+### Loader and model work added
 
-2. Video playback fix
-- Original MP4 output had playback issues in your player.
-- Switched video encoding to `ffmpeg` with `libx264` and `yuv420p`.
-- Result: output videos became playable.
+Added after the data pipeline:
 
-3. Better segmentation model attempt
-- Installed `mediapipe` and switched segmentation path to MediaPipe Selfie Segmentation when available.
-- Kept MOG2 as fallback if MediaPipe is missing.
-- Result: some improvement potential, but still not clean enough in this clip.
+- `model/load.py`
+  - dataset and dataloader
+  - now downsamples images to `128 x 128` by default
+- `model/model.py`
+  - `CoordinateToImageUNet`
+- `model/train.py`
+  - training split, loss, train loop, predict helper
+- `model/checkpoints.py`
+  - timestamped checkpoint path generation
+  - checkpoint listing
+  - latest-checkpoint lookup
+- `model/workspace.ipynb`
+  - notebook that drives the training code
+- `scripts/manage_checkpoints.py`
+  - local checkpoint CLI utility
+- `scripts/s3_upload_checkpoints.py`
+  - upload checkpoints to S3
+- `scripts/s3_download_checkpoints.py`
+  - download checkpoints from S3
+- `inference/engine.py`
+  - checkpoint loader and GPU inference wrapper
+- `inference/server.py`
+  - Flask app for click-to-generate inference
+- `inference/webapp/`
+  - separate browser UI for server-side model execution
 
-4. Mask post-processing improvements
-- Added mask smoothing (Gaussian blur), threshold tuning, morphology, and largest-component filtering.
-- Added temporal smoothing across frames.
-- Added tunable CLI params:
-- `--model-selection`
-- `--mask-threshold`
-- `--mask-blur`
-- `--mask-dilate`
-- `--temporal-smoothing`
-- Ran with aggressive settings (`--mask-threshold 0.10 --mask-blur 17 --mask-dilate 9 --temporal-smoothing 0.8`).
-- Result: still missing large portions of the body in segmented output; not acceptable quality yet.
+## Measured results from the latest processed data run
 
-## Current status
-- Working: frame export, index-finger per-frame JSON, debug overlay video generation, output video playback.
-- Not solved: high-quality human segmentation (clean/full person mask with white background).
+For the current example clip:
 
-## Environment notes observed during work
-- Installing `mediapipe` upgraded `numpy` to `2.2.6`.
-- Warning observed: installed `pandas` expects `numpy < 2` in this environment.
+- frame count processed: `300`
+- missing fingertip labels in the source landmarks JSON: `8`
+- frames where coarse fallback was used instead of the SAM output: `26`
+- median SAM-vs-coarse IoU: about `0.909`
+- mean SAM-vs-coarse IoU: about `0.871`
 
-## Next step to reach target quality
-Move from Selfie Segmentation to a stronger person-segmentation model and then keep the same downstream export/debug steps.
+## Training smoke test status
+
+The current coordinate-to-image model has already passed a basic smoke test:
+
+- loader shapes are correct
+- training runs on the current environment
+- a 1-epoch train/validation pass completed successfully
+- checkpoint save/load round-trip works
+- server-side inference requests run against the saved checkpoint
+
+This confirms the wiring is correct, but it does not mean the model is already good.
+
+## Current limitations
+
+### Data limitations
+
+- fingertip labels still come from the landmarks JSON
+- some segmentation frames still need coarse fallback
+- segmentation can still have minor artifacts on fine details
+
+### Modeling limitations
+
+- the generator only sees `(x, y)`
+- that is probably too little information to reconstruct the whole frame well
+- checkpointing exists now, but best-checkpoint selection and richer experiment logging do not
+
+## Current recommendation
+
+Treat the current model as:
+
+- a baseline experiment
+- a test that the dataset, loader, model, notebook, and CUDA setup are all working together
+
+## Next likely upgrades
+
+- add best-checkpoint selection and periodic autosaving
+- add generated sample saving
+- add a stronger experiment structure in the notebook or scripts
+- add more conditioning than a single `(x, y)` point
+- move from landmark-derived fingertip labels to image-only fingertip supervision

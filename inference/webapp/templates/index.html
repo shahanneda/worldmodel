@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Coordinate To Image Inference</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="hero">
+        <div>
+          <p class="eyebrow">GPU inference demo</p>
+          <h1>Click a coordinate. Generate the frame.</h1>
+          <p class="intro">
+            The browser sends your selected normalized fingertip position to the server.
+            The server runs the trained model on the checkpoint and returns the generated image.
+          </p>
+        </div>
+        <dl class="meta">
+          <div>
+            <dt>Device</dt>
+            <dd>{{ device }}</dd>
+          </div>
+          <div>
+            <dt>Output size</dt>
+            <dd>{{ image_size }} x {{ image_size }}</dd>
+          </div>
+          <div>
+            <dt>Checkpoint</dt>
+            <dd class="checkpoint">{{ checkpoint_path }}</dd>
+          </div>
+        </dl>
+      </section>
+
+      <section class="workspace">
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Input coordinate</h2>
+            <p>Click anywhere inside the stage.</p>
+          </div>
+          <button id="inputStage" class="stage stage-input" type="button" aria-label="Inference input stage">
+            <span class="crosshair" id="crosshair"></span>
+            <span class="grid"></span>
+          </button>
+          <div class="stats">
+            <div>
+              <span class="label">x</span>
+              <span id="xValue">0.500</span>
+            </div>
+            <div>
+              <span class="label">y</span>
+              <span id="yValue">0.500</span>
+            </div>
+            <div>
+              <span class="label">latency</span>
+              <span id="latencyValue">-</span>
+            </div>
+          </div>
+          <button id="rerunButton" class="secondary" type="button">Run again</button>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">
+            <h2>Generated output</h2>
+            <p>The PNG below is returned by the Python server.</p>
+          </div>
+          <div class="stage stage-output">
+            <img id="resultImage" alt="Generated model output" />
+            <div id="resultPlaceholder" class="placeholder">
+              Select a point to run inference.
+            </div>
+          </div>
+          <p id="statusLine" class="status">Server ready.</p>
+        </div>
+      </section>
+    </main>
+
+    <script src="{{ url_for('static', filename='app.js') }}"></script>
+  </body>
+</html>

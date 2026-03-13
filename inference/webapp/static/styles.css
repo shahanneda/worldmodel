@@ -1,0 +1,258 @@
+:root {
+  --paper: #f5efe2;
+  --ink: #1b1b1b;
+  --accent: #f05d23;
+  --accent-dark: #7a2e12;
+  --panel: rgba(255, 251, 244, 0.9);
+  --line: rgba(27, 27, 27, 0.12);
+  --shadow: 0 20px 60px rgba(73, 47, 24, 0.16);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: "IBM Plex Sans", "Helvetica Neue", sans-serif;
+  color: var(--ink);
+  background:
+    radial-gradient(circle at top left, rgba(240, 93, 35, 0.18), transparent 32%),
+    linear-gradient(135deg, #efe3ca 0%, #f5efe2 38%, #e6d7ba 100%);
+}
+
+.app-shell {
+  width: min(1200px, calc(100vw - 32px));
+  margin: 0 auto;
+  padding: 32px 0 48px;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1.5fr) minmax(260px, 0.9fr);
+  gap: 24px;
+  align-items: start;
+  margin-bottom: 24px;
+}
+
+.eyebrow {
+  margin: 0 0 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-dark);
+}
+
+h1 {
+  margin: 0;
+  max-width: 12ch;
+  font-family: "IBM Plex Mono", monospace;
+  font-size: clamp(2.4rem, 5vw, 4.6rem);
+  line-height: 0.94;
+}
+
+.intro {
+  max-width: 58ch;
+  margin: 18px 0 0;
+  font-size: 1.02rem;
+  line-height: 1.6;
+}
+
+.meta,
+.panel {
+  background: var(--panel);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--line);
+  border-radius: 28px;
+  box-shadow: var(--shadow);
+}
+
+.meta {
+  margin: 0;
+  padding: 20px;
+}
+
+.meta div + div {
+  margin-top: 16px;
+}
+
+.meta dt {
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(27, 27, 27, 0.65);
+}
+
+.meta dd {
+  margin: 6px 0 0;
+  font-size: 0.95rem;
+}
+
+.checkpoint {
+  word-break: break-all;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 24px;
+}
+
+.panel {
+  padding: 20px;
+}
+
+.panel-header h2,
+.panel-header p {
+  margin: 0;
+}
+
+.panel-header p {
+  margin-top: 6px;
+  color: rgba(27, 27, 27, 0.68);
+}
+
+.stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  border-radius: 22px;
+  overflow: hidden;
+  border: 1px solid rgba(27, 27, 27, 0.1);
+}
+
+.stage-input {
+  margin-top: 18px;
+  padding: 0;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.65), rgba(240, 93, 35, 0.08)),
+    linear-gradient(135deg, #fbf6ea, #e8dbc1);
+  cursor: crosshair;
+}
+
+.stage-output {
+  margin-top: 18px;
+  background: linear-gradient(135deg, #fffdf8, #eadfc7);
+  display: grid;
+  place-items: center;
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, rgba(27, 27, 27, 0.08) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(27, 27, 27, 0.08) 1px, transparent 1px);
+  background-size: 12.5% 12.5%;
+}
+
+.crosshair {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  margin-left: -12px;
+  margin-top: -12px;
+  border: 2px solid var(--accent);
+  border-radius: 999px;
+  box-shadow: 0 0 0 6px rgba(240, 93, 35, 0.15);
+  z-index: 1;
+}
+
+.crosshair::before,
+.crosshair::after {
+  content: "";
+  position: absolute;
+  background: var(--accent);
+}
+
+.crosshair::before {
+  width: 2px;
+  height: 38px;
+  top: -9px;
+  left: 9px;
+}
+
+.crosshair::after {
+  width: 38px;
+  height: 2px;
+  top: 9px;
+  left: -9px;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.stats div {
+  padding: 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(27, 27, 27, 0.08);
+}
+
+.label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: rgba(27, 27, 27, 0.58);
+}
+
+.secondary {
+  margin-top: 16px;
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font-weight: 700;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+  cursor: pointer;
+}
+
+.secondary:disabled {
+  opacity: 0.6;
+  cursor: wait;
+}
+
+#resultImage {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.placeholder {
+  padding: 24px;
+  text-align: center;
+  color: rgba(27, 27, 27, 0.58);
+}
+
+.status {
+  margin: 14px 0 0;
+  min-height: 1.5em;
+  color: rgba(27, 27, 27, 0.72);
+}
+
+.status[data-error="true"] {
+  color: #9f1f1f;
+}
+
+@media (max-width: 920px) {
+  .hero,
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .app-shell {
+    width: min(100vw - 24px, 1200px);
+    padding-top: 20px;
+  }
+}
