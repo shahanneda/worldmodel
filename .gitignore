@@ -9,3 +9,4 @@ __pycache__/
 webgpu-inference/model/*.onnx
 webgpu-inference/model/*.onnx.data
 webgpu-inference/model/*.bin
+model/artifacts/**

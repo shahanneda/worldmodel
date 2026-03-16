@@ -21,6 +21,13 @@ The new browser-side path is:
 
 This new path lives in its own folder and does not modify the existing server-side inference code.
 
+The export path now works for both:
+
+- `coord_to_image_unet`
+- `pointing_cvae`
+
+For `pointing_cvae`, the exported browser graph uses deterministic prior-mean decoding. The browser input still stays in normalized `[0, 1]` space, and the export wrapper applies any required coordinate remapping internally.
+
 ## What was added
 
 ### New files
@@ -158,7 +165,7 @@ From the repo root:
 
 ```bash
 python scripts/export_webgpu_model.py \
-  --checkpoint model/checkpoints/coord_to_image_unet_2026-03-13T19-20-32Z.pt \
+  --checkpoint model/checkpoints/ckpt000123_finger_xy_cvae_v1_pointing_cvae_2026-03-15T00-00-00Z.pt \
   --output-dir webgpu-inference/model \
   --precision fp16
 ```
@@ -196,8 +203,8 @@ Useful flags:
 After export, expect files like:
 
 - `webgpu-inference/model/manifest.json`
-- `webgpu-inference/model/coord_to_image_unet_..._webgpu_fp16.onnx`
-- `webgpu-inference/model/coord_to_image_unet_..._webgpu_fp16.onnx.data`
+- `webgpu-inference/model/<checkpoint-stem>_webgpu_fp16.onnx`
+- `webgpu-inference/model/<checkpoint-stem>_webgpu_fp16.onnx.data`
 
 The script also prints:
 

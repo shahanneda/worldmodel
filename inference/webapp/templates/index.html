@@ -7,14 +7,23 @@
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
   </head>
   <body>
-    <main class="app-shell">
+    <main
+      id="appShell"
+      class="app-shell"
+      data-model-kind="{{ model_kind }}"
+      data-coord-space="{{ coord_space }}"
+      data-latent-dim="{{ latent_dim }}"
+      data-default-temperature="{{ prior_sample_temperature }}"
+    >
       <section class="hero">
         <div>
           <p class="eyebrow">GPU inference demo</p>
-          <h1>Click a coordinate. Generate the frame.</h1>
+          <h1>Click a coordinate. Inspect the prior.</h1>
           <p class="intro">
-            The browser sends your selected normalized fingertip position to the server.
-            The server runs the trained model on the checkpoint and returns the generated image.
+            The browser sends a normalized fingertip coordinate to the server. For deterministic
+            checkpoints you get a single decoded frame. For <code>pointing_cvae</code> checkpoints,
+            the app now exposes the coordinate-conditioned prior, multiple latent samples, and an
+            uncertainty heatmap for the decoded image family.
           </p>
         </div>
         <dl class="meta">
@@ -23,8 +32,20 @@
             <dd>{{ device }}</dd>
           </div>
           <div>
+            <dt>Model</dt>
+            <dd>{{ model_kind }}</dd>
+          </div>
+          <div>
             <dt>Output size</dt>
             <dd>{{ image_size }} x {{ image_size }}</dd>
+          </div>
+          <div>
+            <dt>Coord space</dt>
+            <dd>{{ coord_space }}</dd>
+          </div>
+          <div>
+            <dt>Latent dim</dt>
+            <dd>{{ latent_dim }}</dd>
           </div>
           <div>
             <dt>Checkpoint</dt>
@@ -34,15 +55,24 @@
       </section>
 
       <section class="workspace">
-        <div class="panel">
+        <div class="panel spotlight-panel">
           <div class="panel-header">
-            <h2>Input coordinate</h2>
-            <p>Click anywhere inside the stage.</p>
+            <div>
+              <h2>Interactive output</h2>
+              <p>Click directly on the stage to rerun inference for a new coordinate.</p>
+            </div>
+            <span id="spotlightBadge" class="panel-pill">Waiting</span>
           </div>
-          <button id="inputStage" class="stage stage-input" type="button" aria-label="Inference input stage">
+
+          <button id="inputStage" class="stage stage-merged" type="button" aria-label="Inference stage">
+            <img id="resultImage" alt="Generated model output" />
+            <span id="resultPlaceholder" class="placeholder">
+              Select a point to run inference.
+            </span>
             <span class="crosshair" id="crosshair"></span>
             <span class="grid"></span>
           </button>
+
           <div class="stats">
             <div>
               <span class="label">x</span>
@@ -53,25 +83,102 @@
               <span id="yValue">0.500</span>
             </div>
             <div>
+              <span class="label">model x</span>
+              <span id="modelXValue">-</span>
+            </div>
+            <div>
+              <span class="label">model y</span>
+              <span id="modelYValue">-</span>
+            </div>
+            <div>
               <span class="label">latency</span>
               <span id="latencyValue">-</span>
             </div>
-          </div>
-          <button id="rerunButton" class="secondary" type="button">Run again</button>
-        </div>
-
-        <div class="panel">
-          <div class="panel-header">
-            <h2>Generated output</h2>
-            <p>The PNG below is returned by the Python server.</p>
-          </div>
-          <div class="stage stage-output">
-            <img id="resultImage" alt="Generated model output" />
-            <div id="resultPlaceholder" class="placeholder">
-              Select a point to run inference.
+            <div>
+              <span class="label">mode</span>
+              <span id="modeValue">{{ model_kind }}</span>
             </div>
           </div>
-          <p id="statusLine" class="status">Server ready.</p>
+
+          <div class="controls">
+            <label class="control" for="temperatureInput">
+              <span class="label">Sample temperature</span>
+              <input id="temperatureInput" type="range" min="0.1" max="1.6" step="0.05" value="{{ prior_sample_temperature }}" />
+              <span id="temperatureValue" class="control-value">{{ "%.2f"|format(prior_sample_temperature) }}</span>
+            </label>
+            <label class="control" for="sampleCountInput">
+              <span class="label">Sample count</span>
+              <input id="sampleCountInput" type="range" min="1" max="6" step="1" value="4" />
+              <span id="sampleCountValue" class="control-value">4</span>
+            </label>
+          </div>
+
+          <div class="actions">
+            <button id="rerunButton" class="secondary" type="button">Run again</button>
+            <p id="statusLine" class="status" aria-live="polite">Server ready.</p>
+          </div>
+        </div>
+
+        <div class="panel gallery-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Decoded variants</h2>
+              <p>Click any tile to promote it into the main spotlight.</p>
+            </div>
+          </div>
+          <div id="galleryGrid" class="gallery-grid"></div>
+          <p id="galleryEmpty" class="panel-note">The gallery populates after the first inference call.</p>
+        </div>
+      </section>
+
+      <section class="inspector-grid">
+        <div id="latentPanel" class="panel inspector-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Latent prior</h2>
+              <p>
+                This click-only app can inspect the coordinate-conditioned prior. The posterior still
+                requires an observed target image, so it is not available here.
+              </p>
+            </div>
+          </div>
+          <p id="latentSummaryLine" class="panel-note">
+            Prior statistics will appear after you sample a coordinate.
+          </p>
+          <div id="topDimsList" class="metric-list"></div>
+          <div class="latent-chart-shell">
+            <svg id="latentChart" class="latent-chart" viewBox="0 0 720 240" preserveAspectRatio="none" aria-label="Latent prior chart"></svg>
+          </div>
+        </div>
+
+        <div id="uncertaintyPanel" class="panel inspector-panel">
+          <div class="panel-header">
+            <div>
+              <h2>Sample uncertainty</h2>
+              <p>
+                Per-pixel spread across the sampled decodes. Brighter regions move more between latent
+                samples.
+              </p>
+            </div>
+          </div>
+          <div class="heatmap-frame">
+            <img id="uncertaintyImage" alt="Prior sample uncertainty heatmap" />
+            <span id="uncertaintyPlaceholder" class="placeholder">
+              Need at least two prior samples to estimate spread.
+            </span>
+          </div>
+        </div>
+
+        <div id="deterministicPanel" class="panel inspector-panel hidden">
+          <div class="panel-header">
+            <div>
+              <h2>Deterministic checkpoint</h2>
+              <p>
+                This checkpoint does not expose a latent prior. The webapp falls back to a single
+                deterministic decode, and the latent visualizers stay hidden.
+              </p>
+            </div>
+          </div>
         </div>
       </section>
     </main>

@@ -17,8 +17,15 @@ Working:
 Working:
 - processed dataset -> PyTorch loader
 - downsampled training frames -> coordinate-conditioned U-Net
+- downsampled training frames -> latent `pointing_cvae` with image posterior and coordinate prior
 - train/validation split
+- persisted split artifacts
 - basic training loop
+- YAML config loader
+- CLI training entrypoint
+- W&B run logging
+- validation preview image uploads during training
+- config and checkpoint artifact uploads to W&B
 - checkpoint save/load support
 - local checkpoint management utility
 - S3 upload/download scripts for checkpoints
@@ -26,7 +33,6 @@ Working:
 - server-side inference webapp
 
 Not yet done:
-- generated sample saving during training
 - better conditioning than a single `(x, y)` point
 - image-only fingertip label generation
 
@@ -42,6 +48,12 @@ The current supervised pair is:
 
 - input: fingertip coordinate `(x, y)`
 - target: segmented frame
+
+For the latent model, the training path is:
+
+- posterior encoder: `q(z | image)`
+- prior network: `p(z | coord)`
+- decoder: reused coordinate-conditioned U-Net fed with `[coord, z]`
 
 ## What has been done so far
 
@@ -96,12 +108,16 @@ Added after the data pipeline:
   - `CoordinateToImageUNet`
 - `model/train.py`
   - training split, loss, train loop, predict helper
+- `model/config.py`
+  - YAML config loader and validation
 - `model/checkpoints.py`
-  - timestamped checkpoint path generation
+  - ID-prefixed timestamped checkpoint path generation
   - checkpoint listing
-  - latest-checkpoint lookup
+  - latest-checkpoint lookup by checkpoint ID
 - `model/workspace.ipynb`
-  - notebook that drives the training code
+  - notebook that loads one training config and drives the training code
+- `scripts/train_from_config.py`
+  - command-line training entrypoint
 - `scripts/manage_checkpoints.py`
   - local checkpoint CLI utility
 - `scripts/s3_upload_checkpoints.py`
@@ -147,21 +163,21 @@ This confirms the wiring is correct, but it does not mean the model is already g
 
 ### Modeling limitations
 
-- the generator only sees `(x, y)`
-- that is probably too little information to reconstruct the whole frame well
-- checkpointing exists now, but best-checkpoint selection and richer experiment logging do not
+- the baseline generator only sees `(x, y)`
+- the latent model still uses only `(x, y)` for the prior, so some ambiguity remains
+- checkpointing and W&B experiment logging exist now, but the current model is still a simple baseline
+- config-driven training is in place, but schema-migration tooling for future config versions does not yet exist
 
 ## Current recommendation
 
 Treat the current model as:
 
 - a baseline experiment
-- a test that the dataset, loader, model, notebook, and CUDA setup are all working together
+- a test that the dataset, loader, model, config system, notebook, CLI, and CUDA setup are all working together
 
 ## Next likely upgrades
 
 - add best-checkpoint selection and periodic autosaving
-- add generated sample saving
-- add a stronger experiment structure in the notebook or scripts
-- add more conditioning than a single `(x, y)` point
+- tighten best-checkpoint policies and artifact retention
+- add more conditioning than a single `(x, y)` point to the latent prior
 - move from landmark-derived fingertip labels to image-only fingertip supervision

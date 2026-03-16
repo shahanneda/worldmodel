@@ -8,9 +8,10 @@ The project goal is now:
 2. Segment the person cleanly away from the background.
 3. Track the fingertip location for each frame.
 4. Save the processed result as a reproducible dataset.
-5. Train a model that maps fingertip `(x, y)` coordinates to an image.
+5. Train a model that maps fingertip coordinates to an image, either directly or through a latent posterior/prior.
 6. Save checkpoints without overwriting older runs.
-7. Sync checkpoints to and from S3.
+7. Log training runs, validation previews, configs, and checkpoints to Weights & Biases.
+8. Sync checkpoints to and from S3.
 
 At the moment, the dataset-building part is working, the first training stack is in place, and there is now a lightweight inference webapp for serving a trained checkpoint.
 
@@ -51,8 +52,11 @@ Main files:
 model/load.py
 model/model.py
 model/train.py
+model/config.py
 model/checkpoints.py
 model/workspace.ipynb
+configs/
+scripts/train_from_config.py
 ```
 
 ### Stage 3: Serve the trained checkpoint
@@ -134,9 +138,16 @@ The current training task is:
 - input `x`: fingertip coordinate `(x, y)`
 - target `y`: segmented RGB frame
 
-So we are currently learning a coordinate-conditioned image generator.
+There are now two supported model families:
 
-This is a deliberately simple first experiment. It is not expected to solve the full problem perfectly, but it gives a clean testbed for the processed data and model wiring.
+- `coord_to_image_unet`
+  - deterministic coordinate-conditioned generator
+- `pointing_cvae`
+  - posterior encoder `q(z | image)`
+  - coordinate prior `p(z | coord)`
+  - reused coordinate-conditioned U-Net decoder fed with `[coord, z]`
+
+The baseline U-Net is still useful as a simple first experiment. The newer `pointing_cvae` path is the latent-space version meant to support plausible multi-modal outputs without rewriting the decoder.
 
 ### Data loader
 
@@ -160,6 +171,7 @@ Where:
 By default:
 
 - coordinates are normalized to `[0, 1]`
+- configs can optionally remap them to `[-1, 1]` before they hit the model
 - missing coordinate frames are dropped
 - images are downsampled to `128 x 128`
 
@@ -186,6 +198,20 @@ This is a small coordinate-conditioned U-Net style generator:
 - the embedding also creates skip feature maps at multiple resolutions
 - a decoder upsamples to RGB output
 
+The latent variant lives in:
+
+```text
+model/cvae.py
+```
+
+It adds:
+
+- `PosteriorEncoder`
+- `PriorNet`
+- `PointingCVAE`
+
+`PointingCVAE` keeps the current decoder architecture and only changes the conditioning input from `coord_dim` to `coord_dim + latent_dim`.
+
 ### Training code
 
 The training code is in:
@@ -194,12 +220,16 @@ The training code is in:
 model/train.py
 ```
 
-It currently provides:
+It now provides:
 
 - train/validation split creation
+- split artifact persistence
 - reconstruction loss
+- KL loss and beta warmup for the latent path
 - one epoch loop
 - full training loop
+- config-driven training entrypoint
+- W&B metrics, latent diagnostics, validation preview, config artifact, and checkpoint artifact logging
 - prediction helper
 
 ### Notebook
@@ -212,12 +242,26 @@ model/workspace.ipynb
 
 The notebook is intentionally thin. It should be used to:
 
+- load one YAML config from `configs/`
+- inspect the resolved config
 - import the code from the Python files
-- configure hyperparameters
 - run training
 - inspect outputs
 
+The same shared training path is responsible for W&B logging, so notebook-triggered training and command-line training land in the same experiment tracking system.
+
 The notebook should not become the main source of truth for the training logic.
+The command-line entrypoint for real runs is:
+
+```text
+scripts/train_from_config.py
+```
+
+Recommended latent smoke test:
+
+```text
+configs/pointing_cvae_smoke.yaml
+```
 
 ## Checkpoints
 
@@ -234,32 +278,32 @@ model/checkpoints.py
 This utility provides:
 
 - `make_checkpoint_path(...)`
-  - creates a timestamped checkpoint filename
+  - creates an ID-prefixed timestamped checkpoint filename
 - `list_checkpoints(...)`
   - lists local checkpoints
 - `latest_checkpoint(...)`
-  - returns the newest local checkpoint path
+  - returns the latest local checkpoint path, preferring the highest checkpoint ID
 
-Checkpoint filenames now follow a timestamp-based pattern such as:
+Checkpoint filenames now follow an ID-first pattern such as:
 
 ```text
-model/checkpoints/coord_to_image_unet_2026-03-13T19-18-51Z.pt
+model/checkpoints/ckpt000006_finger_xy_baseline_v1_coord_to_image_unet_2026-03-13T21-33-38Z.pt
 ```
 
-This was added specifically so future checkpoints do not overwrite each other.
+The checkpoint ID keeps incrementing across saves, which makes it easier to refer to checkpoints quickly and still guarantees that future checkpoints do not overwrite each other.
 
 ### Existing checkpoint safety
 
 There is already an older checkpoint file in the checkpoints folder being used by something else.
 
 The new system does not modify that old file automatically.
-Future saves should use timestamped checkpoint paths instead.
+Future saves should use the new ID-prefixed checkpoint paths instead.
 
 ### Notebook checkpoint flow
 
 The training notebook now:
 
-1. generates a fresh timestamped checkpoint path
+1. generates a fresh ID-prefixed checkpoint path
 2. saves the trained model to that new path
 3. can list available checkpoints
 4. can load the latest checkpoint back into the model
@@ -301,12 +345,12 @@ These are separate from the data sync scripts on purpose.
 
 The notebook currently does this:
 
-1. imports the loader, model, and training functions
-2. builds train/validation loaders
+1. loads one training config
+2. prints a summary of the resolved config
 3. visualizes a target example
-4. trains the model
-5. plots train/validation loss
-6. compares target images vs generated images
+4. calls the config-driven training path
+5. plots train/validation/test loss
+6. reloads the saved checkpoint and compares target images vs generated images
 
 ## Stage 3 in more detail
 
@@ -373,25 +417,7 @@ PY
 ### Training smoke test
 
 ```bash
-python3 - <<'PY'
-import torch
-from model.model import CoordinateToImageUNet
-from model.train import make_train_val_loaders, train_model
-
-train_loader, val_loader = make_train_val_loaders(
-    "data/processed-finger-sam-2026-01-30T22-41-47-949Z",
-    image_size=(128, 128),
-    batch_size=8,
-)
-model = CoordinateToImageUNet(image_size=128)
-train_model(
-    model,
-    train_loader,
-    val_loader,
-    device="cuda" if torch.cuda.is_available() else "cpu",
-    epochs=1,
-)
-PY
+python3 scripts/train_from_config.py configs/coord_to_image_unet_smoke.yaml
 ```
 
 ## What has been done so far
@@ -405,8 +431,8 @@ Already completed:
 - added a PyTorch loader for the processed data
 - added image downsampling in the loader for easier training
 - added the first coordinate-to-image U-Net model
-- added a separate training module and a notebook that calls into the code
-- added timestamped checkpoint utilities
+- added a separate training module, YAML config loader, CLI training entrypoint, and a notebook that calls into the code
+- added monotonic checkpoint IDs plus timestamped checkpoint utilities
 - added checkpoint upload/download scripts for S3
 - added a separate server-side inference webapp
 

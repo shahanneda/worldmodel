@@ -35,6 +35,7 @@ The main packages needed by the current workflow are:
 - `ipykernel`
 - `matplotlib`
 - `flask`
+- `wandb`
 
 ## CUDA
 
@@ -110,6 +111,26 @@ print("cuda", torch.cuda.is_available())
 PY
 ```
 
+### Check W&B
+
+```bash
+python3 - <<'PY'
+import wandb
+
+print("wandb", wandb.__version__)
+PY
+```
+
+## Environment variables
+
+Training now auto-loads the repo-root `.env` file.
+
+The relevant training variable is:
+
+- `WANDB_API_KEY`
+
+That is used by `scripts/train_from_config.py` and notebook-driven `run_training_from_config(...)` calls so training runs show up in Weights & Biases without manually sourcing `.env` first.
+
 ## Current project layout
 
 ### Data pipeline
@@ -123,10 +144,12 @@ PY
   - processed-data dataset and dataloader
 - `model/model.py`
   - coordinate-conditioned U-Net generator
+- `model/cvae.py`
+  - latent posterior/prior model that reuses the U-Net decoder
 - `model/train.py`
-  - loss, split creation, training loops
+  - loss, split creation, training loops, and W&B logging hooks
 - `model/checkpoints.py`
-  - timestamped checkpoint utility
+  - checkpoint utility with monotonic ID-prefixed filenames
 - `model/workspace.ipynb`
   - notebook orchestration
 
@@ -142,7 +165,7 @@ PY
 ### Checkpoint and sync scripts
 
 - `scripts/manage_checkpoints.py`
-  - local checkpoint listing / latest / new-path helper
+  - local checkpoint listing / latest / new-path helper with checkpoint IDs
 - `scripts/s3_upload_checkpoints.py`
   - upload local checkpoints to S3
 - `scripts/s3_download_checkpoints.py`

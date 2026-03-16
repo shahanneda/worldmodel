@@ -12,6 +12,9 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
 @dataclass(frozen=True)
 class FingerSampleRecord:
     frame_index: int
@@ -19,6 +22,11 @@ class FingerSampleRecord:
     y_px: Optional[int]
     x_norm: Optional[float]
     y_norm: Optional[float]
+    quality_flagged: bool = False
+    finger_present: bool = False
+    shirt_color_source: Optional[str] = None
+    shirt_color_confidence: Optional[float] = None
+    shirt_color_sample_count: Optional[int] = None
 
 
 @dataclass(frozen=True)
@@ -45,6 +53,21 @@ def _load_records(index_json_path: Path) -> list[FingerSampleRecord]:
                 y_px=item.get("y_px"),
                 x_norm=item.get("x_norm"),
                 y_norm=item.get("y_norm"),
+                quality_flagged=bool(item.get("quality_flagged", False)),
+                finger_present=bool(
+                    item.get("finger_present", item.get("x_px") is not None and item.get("y_px") is not None)
+                ),
+                shirt_color_source=item.get("shirt_color_source"),
+                shirt_color_confidence=(
+                    float(item["shirt_color_confidence"])
+                    if item.get("shirt_color_confidence") is not None
+                    else None
+                ),
+                shirt_color_sample_count=(
+                    int(item["shirt_color_sample_count"])
+                    if item.get("shirt_color_sample_count") is not None
+                    else None
+                ),
             )
         )
     return records
@@ -119,6 +142,8 @@ class FingerVideoDataset(Dataset[tuple[Tensor, Tensor]]):
     - coordinates are normalized to `[0, 1]`
     - images are resized to `128 x 128`
     - passing `processed_dir='data'` uses every matching processed dataset under `data/`
+    - `require_finger=True` drops frames without a fingertip label
+    - `require_shirt=True` drops frames where shirt color had to be filled instead of observed directly
     """
 
     def __init__(
@@ -127,13 +152,22 @@ class FingerVideoDataset(Dataset[tuple[Tensor, Tensor]]):
         *,
         image_size: tuple[int, int] | None = (128, 128),
         normalized_coords: bool = True,
+        coord_space: str = "zero_to_one",
         drop_missing: bool = True,
+        drop_quality_flagged: bool = True,
+        require_finger: bool = False,
+        require_shirt: bool = False,
+        min_shirt_confidence: float = 0.0,
+        min_shirt_sample_count: int = 1,
         transform: Optional[Callable[[Tensor], Tensor]] = None,
         glob_pattern: str = "processed-finger*",
     ) -> None:
         self.processed_dirs = _resolve_processed_dirs(processed_dir, glob_pattern=glob_pattern)
         self.image_size = image_size
         self.normalized_coords = normalized_coords
+        if coord_space not in {"zero_to_one", "minus_one_to_one"}:
+            raise ValueError("coord_space must be 'zero_to_one' or 'minus_one_to_one'.")
+        self.coord_space = coord_space
         self.transform = transform
 
         self.samples: list[FingerSample] = []
@@ -147,8 +181,24 @@ class FingerVideoDataset(Dataset[tuple[Tensor, Tensor]]):
                     f"{len(records)} records vs {len(frame_paths)} frame files in {directory}"
                 )
 
+            if require_shirt and all(record.shirt_color_source is None for record in records):
+                raise ValueError(
+                    "Shirt-based filtering was requested, but shirt color metadata is missing in "
+                    f"{directory}. Run scripts/extract_processed_features.py for this dataset first."
+                )
+
             for record, frame_path in zip(records, frame_paths):
                 if drop_missing and (record.x_px is None or record.y_px is None):
+                    continue
+                if drop_quality_flagged and record.quality_flagged:
+                    continue
+                if require_finger and not record.finger_present:
+                    continue
+                if require_shirt and not _record_has_direct_shirt_signal(
+                    record,
+                    min_shirt_confidence=min_shirt_confidence,
+                    min_shirt_sample_count=min_shirt_sample_count,
+                ):
                     continue
                 self.samples.append(
                     FingerSample(
@@ -164,11 +214,26 @@ class FingerVideoDataset(Dataset[tuple[Tensor, Tensor]]):
     def __len__(self) -> int:
         return len(self.samples)
 
+    def sample_identifier(self, index: int) -> str:
+        sample = self.samples[index]
+        source_dir = sample.source_dir.resolve()
+        try:
+            source_display = source_dir.relative_to(REPO_ROOT)
+        except ValueError:
+            source_display = source_dir
+        return f"{source_display.as_posix()}::frame:{sample.record.frame_index}"
+
+    def sample_identifiers(self) -> list[str]:
+        return [self.sample_identifier(index) for index in range(len(self.samples))]
+
     def _coords_tensor(self, record: FingerSampleRecord) -> Tensor:
         if self.normalized_coords:
             if record.x_norm is None or record.y_norm is None:
                 raise ValueError(f"Missing normalized coordinates for frame {record.frame_index}")
-            return torch.tensor([record.x_norm, record.y_norm], dtype=torch.float32)
+            coords = torch.tensor([record.x_norm, record.y_norm], dtype=torch.float32)
+            if self.coord_space == "minus_one_to_one":
+                coords = coords * 2.0 - 1.0
+            return coords
 
         if record.x_px is None or record.y_px is None:
             raise ValueError(f"Missing pixel coordinates for frame {record.frame_index}")
@@ -206,7 +271,13 @@ def build_finger_dataloader(
     num_workers: int = 0,
     image_size: tuple[int, int] | None = (128, 128),
     normalized_coords: bool = True,
+    coord_space: str = "zero_to_one",
     drop_missing: bool = True,
+    drop_quality_flagged: bool = True,
+    require_finger: bool = False,
+    require_shirt: bool = False,
+    min_shirt_confidence: float = 0.0,
+    min_shirt_sample_count: int = 1,
     transform: Optional[Callable[[Tensor], Tensor]] = None,
     pin_memory: bool = True,
     glob_pattern: str = "processed-finger*",
@@ -215,7 +286,13 @@ def build_finger_dataloader(
         processed_dir=processed_dir,
         image_size=image_size,
         normalized_coords=normalized_coords,
+        coord_space=coord_space,
         drop_missing=drop_missing,
+        drop_quality_flagged=drop_quality_flagged,
+        require_finger=require_finger,
+        require_shirt=require_shirt,
+        min_shirt_confidence=min_shirt_confidence,
+        min_shirt_sample_count=min_shirt_sample_count,
         transform=transform,
         glob_pattern=glob_pattern,
     )
@@ -241,3 +318,19 @@ def demo_batch(
         shuffle=False,
     )
     return next(iter(loader))
+
+
+def _record_has_direct_shirt_signal(
+    record: FingerSampleRecord,
+    *,
+    min_shirt_confidence: float,
+    min_shirt_sample_count: int,
+) -> bool:
+    if record.shirt_color_source not in {"direct", "direct_temporal_blend"}:
+        return False
+    if record.shirt_color_confidence is None or record.shirt_color_sample_count is None:
+        return False
+    return (
+        record.shirt_color_confidence >= min_shirt_confidence
+        and record.shirt_color_sample_count >= min_shirt_sample_count
+    )

@@ -20,6 +20,9 @@ loader = build_finger_dataloader(
     PROCESSED_DIR,
     batch_size=8,
     shuffle=True,
+    require_finger=True,
+    require_shirt=True,
+    min_shirt_sample_count=1500,
 )
 
 batch_coords, batch_frames = next(iter(loader))

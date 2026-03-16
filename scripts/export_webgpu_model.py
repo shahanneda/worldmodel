@@ -37,10 +37,7 @@ class ExportArtifacts:
 
 
 def default_checkpoint_path() -> Path:
-    latest = latest_checkpoint(
-        root=REPO_ROOT / "model" / "checkpoints",
-        glob_pattern="coord_to_image_unet*.pt",
-    )
+    latest = latest_checkpoint(root=REPO_ROOT / "model" / "checkpoints")
     if latest is not None:
         return latest
     return REPO_ROOT / "model" / "checkpoints" / "coord_to_image_unet.pt"
@@ -54,7 +51,7 @@ def parse_args() -> argparse.Namespace:
         "--checkpoint",
         type=Path,
         default=default_checkpoint_path(),
-        help="Checkpoint to export. Defaults to the latest coord_to_image_unet checkpoint.",
+        help="Checkpoint to export. Defaults to the latest local training checkpoint.",
     )
     parser.add_argument(
         "--output-dir",
@@ -218,6 +215,7 @@ def verify_export(
 
 def build_manifest(
     checkpoint_path: Path,
+    engine: CoordinateToImageInference,
     artifacts: ExportArtifacts,
     verification: dict[str, Any] | None,
 ) -> dict[str, Any]:
@@ -235,12 +233,13 @@ def build_manifest(
         )
 
     return {
-        "modelName": "CoordinateToImageUNet",
+        "modelName": engine.metadata.model_kind,
         "sourceCheckpoint": _repo_relative_display(checkpoint_path),
         "createdAtUtc": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         "precision": artifacts.precision,
         "opset": artifacts.opset,
         "imageSize": artifacts.image_size,
+        "coordSpace": engine.metadata.coord_space,
         "graphUrl": f"./{artifacts.graph_path.name}",
         "graphBytes": artifacts.graph_path.stat().st_size,
         "externalData": external_entries,
@@ -280,7 +279,7 @@ def main() -> None:
 
     verification = None if args.skip_verify else verify_export(engine, artifacts)
     manifest_path = output_dir / args.manifest_name
-    manifest = build_manifest(checkpoint_path, artifacts, verification)
+    manifest = build_manifest(checkpoint_path, engine, artifacts, verification)
     manifest_path.write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
 
     print(f"checkpoint: {_repo_relative_display(checkpoint_path)}")

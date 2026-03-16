@@ -9,6 +9,8 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import cv2
 import numpy as np
 import torch
+from processing.derived_features import apply_features_to_processed_dir
+from processing.quality_filter import QualityFilterConfig, apply_quality_filter
 from segment_anything import SamPredictor, sam_model_registry
 from torchvision.models.detection import (
     MaskRCNN_ResNet50_FPN_V2_Weights,
@@ -455,6 +457,23 @@ def main() -> None:
     parser.add_argument("--hand-box-padding", type=int, default=48)
     parser.add_argument("--morph-kernel", type=int, default=11)
     parser.add_argument("--max-frames", type=int, default=None)
+    parser.add_argument(
+        "--skip-quality-filter",
+        action="store_true",
+        help="Skip the post-processing quality filter that flags suspicious masks in the output JSON.",
+    )
+    parser.add_argument("--quality-max-foreground-ratio", type=float, default=0.85)
+    parser.add_argument("--quality-max-border-touch-ratio", type=float, default=0.75)
+    parser.add_argument("--quality-max-area-ratio-vs-window", type=float, default=1.75)
+    parser.add_argument("--quality-min-border-touch-for-spike", type=float, default=0.20)
+    parser.add_argument("--quality-window-size", type=int, default=15)
+    parser.add_argument(
+        "--derived-features",
+        nargs="*",
+        default=["shirt_color"],
+        choices=["shirt_color"],
+        help="Derived features to compute from the processed dataset after segmentation completes.",
+    )
     args = parser.parse_args()
 
     if args.device.startswith("cuda") and not torch.cuda.is_available():
@@ -571,6 +590,7 @@ def main() -> None:
                 "y_px": tip.y_px,
                 "x_norm": tip.x_norm,
                 "y_norm": tip.y_norm,
+                "finger_present": tip.x_px is not None and tip.y_px is not None,
                 "tip_source": "landmarks_json" if tip.x_px is not None else None,
                 "coarse_mask_score": person.score,
                 "sam_score": sam_score,
@@ -606,6 +626,32 @@ def main() -> None:
             f,
             indent=2,
         )
+
+    if not args.skip_quality_filter:
+        quality_config = QualityFilterConfig(
+            max_foreground_ratio=args.quality_max_foreground_ratio,
+            max_border_touch_ratio=args.quality_max_border_touch_ratio,
+            max_area_ratio_vs_window=args.quality_max_area_ratio_vs_window,
+            min_border_touch_for_spike=args.quality_min_border_touch_for_spike,
+            window_size=args.quality_window_size,
+        )
+        summary = apply_quality_filter(args.out, config=quality_config)
+        print(
+            f"Quality filter flagged {summary['flagged_frame_count']} / {summary['frame_count']} frames.",
+            flush=True,
+        )
+
+    if args.derived_features:
+        feature_summary = apply_features_to_processed_dir(args.out, feature_names=args.derived_features, force=True)
+        for feature in feature_summary["features"]:
+            if feature["feature"] == "shirt_color":
+                print(
+                    "Shirt color extraction "
+                    f"{'skipped' if feature['skipped'] else 'updated'}: "
+                    f"direct={feature.get('frames_with_direct_estimate')} "
+                    f"fallback={feature.get('frames_using_fallback')}",
+                    flush=True,
+                )
 
     _write_video_from_frames(segmented_frames_dir, os.path.join(args.out, "segmented_video.mp4"), fps)
     _write_video_from_frames(debug_frames_dir, os.path.join(args.out, "debug_video.mp4"), fps)

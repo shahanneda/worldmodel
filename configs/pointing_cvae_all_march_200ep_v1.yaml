@@ -1,0 +1,118 @@
+# 200-epoch latent coordinate-to-image config using all March 13 processed datasets.
+
+config_schema: 1
+VERSION: finger_xy_cvae_all_march_200ep_v1
+
+experiment:
+  run_name: pointing_cvae
+  description: Conditional VAE training on all March 13 processed finger clips for 200 epochs, excluding the January 30 clip.
+  tags:
+    - cvae
+    - latent
+    - coord-to-image
+    - march-only
+    - long-run
+
+paths:
+  checkpoint_root: model/checkpoints
+  split_root: model/splits
+  artifact_root: model/artifacts
+
+data:
+  datasets:
+    - name: march13_clip_193743620
+      processed_dir: data/processed-finger-sam-2026-03-13T19-37-43-620Z
+    - name: march13_clip_193856625
+      processed_dir: data/processed-finger-sam-2026-03-13T19-38-56-625Z
+    - name: march13_clip_193913235
+      processed_dir: data/processed-finger-sam-2026-03-13T19-39-13-235Z
+    - name: march13_clip_194647306
+      processed_dir: data/processed-finger-sam-2026-03-13T19-46-47-306Z
+    - name: march13_clip_194722023
+      processed_dir: data/processed-finger-sam-2026-03-13T19-47-22-023Z
+  normalized_coords: true
+  coord_space: minus_one_to_one
+  drop_missing: true
+  drop_quality_flagged: true
+  require_finger: true
+  require_shirt: true
+  min_shirt_confidence: 0.0
+  min_shirt_sample_count: 1500
+
+splits:
+  val_fraction: 0.1
+  test_fraction: 0.1
+  seed: 42
+  persist: true
+  reuse_existing: true
+
+loader:
+  batch_size: 4
+  num_workers: 0
+  pin_memory: true
+  shuffle_train: true
+
+model:
+  kind: pointing_cvae
+  image_size: 64
+  coord_dim: 2
+  base_channels: 16
+  latent_channels: 128
+  bottleneck_size: 8
+  latent_dim: 32
+  posterior_base_channels: 32
+  prior_hidden_dim: 128
+
+training:
+  device: auto
+  epochs: 200
+  lr: 0.0002
+  amp: auto
+  optimizer: adamw
+  weight_decay: 0.0001
+  grad_accum_steps: 4
+  grad_clip_norm: 1.0
+  recon_mse_weight: 0.1
+  kl_beta_max: 0.001
+  kl_beta_warmup_steps: 5000
+  prior_sample_temperature: 0.7
+  resume:
+    mode: never
+
+checkpointing:
+  save_final: true
+  save_best: true
+  keep_history: true
+  save_every_n_epochs: 50
+  filename_template: "{checkpoint_id}_{VERSION}_{run_name}_{timestamp}.pt"
+
+reproducibility:
+  seed: 42
+  enforce_determinism: false
+  capture_git_state: true
+  save_resolved_config: true
+  save_split_artifact: true
+
+notebook:
+  visualize_dataset_summary: true
+  visualize_split_summary: true
+  visualize_samples: 8
+
+wandb:
+  enabled: true
+  project: worldmodel
+  mode: online
+  job_type: train
+  tags:
+    - yaml-config
+    - validation-previews
+    - cvae
+    - march-only
+    - long-run
+  log_code: true
+  log_model_artifact: true
+  log_config_artifact: true
+  validation_sample_count: 4
+  log_validation_every_n_epochs: 10
+  validation_prior_sample_count: 2
+  validation_prior_temperature: 0.7
