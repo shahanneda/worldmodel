@@ -10,6 +10,7 @@ from typing import Optional
 DEFAULT_CHECKPOINT_DIR = Path("model/checkpoints")
 COUNTER_FILENAME = ".checkpoint_counter"
 CHECKPOINT_ID_PATTERN = re.compile(r"^ckpt(\d+)_")
+FAMILY_RUN_NAMES = ("coord_to_image_unet", "pointing_cvae")
 
 
 @dataclass(frozen=True)
@@ -18,6 +19,16 @@ class CheckpointInfo:
     stem: str
     checkpoint_id: Optional[int]
     created_at_utc: Optional[datetime]
+
+
+def _checkpoint_sort_key(info: CheckpointInfo) -> tuple[int, int, int, float, str]:
+    return (
+        1 if info.checkpoint_id is not None else 0,
+        info.checkpoint_id if info.checkpoint_id is not None else -1,
+        1 if info.created_at_utc is not None else 0,
+        info.created_at_utc.timestamp() if info.created_at_utc is not None else float("-inf"),
+        info.stem,
+    )
 
 
 def checkpoint_dir(root: str | Path = DEFAULT_CHECKPOINT_DIR) -> Path:
@@ -155,6 +166,41 @@ def list_checkpoints(
     return infos
 
 
+def checkpoint_family_key(stem: str) -> str:
+    family = stem
+    checkpoint_id = parse_checkpoint_id(stem)
+    if checkpoint_id is not None and "_" in family:
+        family = family.split("_", 1)[1]
+
+    maybe_timestamp = stem.split("_")[-1]
+    if parse_checkpoint_timestamp(stem) is not None and family.endswith(f"_{maybe_timestamp}"):
+        family = family[: -(len(maybe_timestamp) + 1)]
+
+    for run_name in FAMILY_RUN_NAMES:
+        if family == run_name:
+            return family
+        marker = f"_{run_name}"
+        marker_index = family.find(marker)
+        if marker_index != -1:
+            return family[: marker_index + len(marker)]
+
+    return family
+
+
+def latest_checkpoints_by_family(
+    *,
+    root: str | Path = DEFAULT_CHECKPOINT_DIR,
+    glob_pattern: str = "*.pt",
+) -> list[CheckpointInfo]:
+    grouped: dict[str, CheckpointInfo] = {}
+    for info in list_checkpoints(root=root, glob_pattern=glob_pattern):
+        family_key = checkpoint_family_key(info.stem)
+        current = grouped.get(family_key)
+        if current is None or _checkpoint_sort_key(info) > _checkpoint_sort_key(current):
+            grouped[family_key] = info
+    return sorted(grouped.values(), key=_checkpoint_sort_key)
+
+
 def latest_checkpoint(
     *,
     root: str | Path = DEFAULT_CHECKPOINT_DIR,
@@ -164,15 +210,7 @@ def latest_checkpoint(
     if not checkpoints:
         return None
 
-    with_ids = [info for info in checkpoints if info.checkpoint_id is not None]
-    if with_ids:
-        return max(with_ids, key=lambda info: info.checkpoint_id).path
-
-    with_timestamps = [info for info in checkpoints if info.created_at_utc is not None]
-    if with_timestamps:
-        return max(with_timestamps, key=lambda info: info.created_at_utc).path
-
-    return checkpoints[-1].path
+    return max(checkpoints, key=_checkpoint_sort_key).path
 
 
 def find_checkpoint_by_id(
