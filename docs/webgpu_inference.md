@@ -74,20 +74,27 @@ That choice was deliberate:
 
 ## Current model/export reality
 
-The current model exports successfully, but it is large.
+The current browser path works with the newer latent checkpoint too.
 
-Measured export sizes from the current checkpoint:
+Most recently verified export:
 
-- `fp32`: about `763 MB`
-- `fp16`: about `400 MB`
+- checkpoint:
+  - `model/checkpoints/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z.pt`
+- model kind:
+  - `pointing_cvae`
+- image size:
+  - `128`
+- coord space:
+  - `minus_one_to_one`
+- precision:
+  - `fp16`
+- total browser model size:
+  - `247,914,279` bytes
+- ONNX Runtime parity check:
+  - `max_abs_diff=0.002496302`
+  - `mean_abs_diff=0.000008987`
 
-The main size problem is this tensor:
-
-- `skip_projections.3.weight`
-  - about `512 MB` in `fp32`
-  - about `256 MB` in `fp16`
-
-So the browser path works technically, but hosting constraints are the main practical issue.
+Earlier exports from the deterministic baseline were significantly larger, so hosting constraints still matter, but the newer checkpoint is materially smaller than the first browser export.
 
 ## Generated artifact format
 
@@ -140,6 +147,7 @@ You need an environment that has:
 - `onnxscript`
 - `onnxconverter-common`
 - `numpy`
+- `pillow`
 
 If the usual project env is unavailable on the machine, a temporary venv works fine.
 
@@ -154,18 +162,44 @@ python3 -m venv /tmp/worldmodel-webgpu-venv
   onnxruntime \
   onnxscript \
   onnxconverter-common \
-  numpy
+  numpy \
+  pillow
 ```
 
 That is enough for the export path.
+
+### Environment differences: remote training vs local browser export
+
+The checkpoint may come from a different machine than the one doing the browser export.
+
+In the current setup:
+
+- remote training environment
+  - Linux server
+  - NVIDIA GPU / CUDA used for training
+  - source of the `.pt` checkpoints
+- local browser export environment
+  - macOS laptop
+  - CPU-only export and ONNX Runtime verification
+  - AWS CLI used locally for S3 upload
+  - temporary export env used here:
+    - `/tmp/worldmodel-webgpu-venv`
+
+That difference is fine because:
+
+- training requires the server GPU
+- ONNX export does not require CUDA
+- the checkpoint format already stores the model config needed to reconstruct `pointing_cvae`
+
+If you prefer conda on the laptop, that also works. The important part is just having the same export packages installed locally.
 
 ### 2. Export the checkpoint
 
 From the repo root:
 
 ```bash
-python scripts/export_webgpu_model.py \
-  --checkpoint model/checkpoints/ckpt000123_finger_xy_cvae_v1_pointing_cvae_2026-03-15T00-00-00Z.pt \
+/tmp/worldmodel-webgpu-venv/bin/python scripts/export_webgpu_model.py \
+  --checkpoint model/checkpoints/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z.pt \
   --output-dir webgpu-inference/model \
   --precision fp16
 ```
@@ -272,6 +306,7 @@ The helper script for this is:
 ```bash
 export S3_BUCKET=your-bucket
 export S3_PREFIX=worldmodel
+export WEBGPU_S3_PREFIX='worldmodel/webgpu-inference/browser-model/your-checkpoint-name'
 export WEBGPU_CORS_ALLOWED_ORIGINS='https://yourname.github.io,http://127.0.0.1:5174,http://localhost:5174'
 python scripts/s3_configure_webgpu_public_access.py
 ```
@@ -293,6 +328,7 @@ After the ONNX export exists locally:
 ```bash
 export S3_BUCKET=your-bucket
 export S3_PREFIX=worldmodel
+export WEBGPU_S3_PREFIX='worldmodel/webgpu-inference/browser-model/your-checkpoint-name'
 python scripts/s3_upload_webgpu_assets.py
 ```
 
@@ -302,10 +338,16 @@ By default this uploads from:
 webgpu-inference/model/
 ```
 
-and targets this S3 prefix:
+and targets this S3 prefix by default:
 
 ```text
 worldmodel/webgpu-inference/model/
+```
+
+For checkpoint-specific browser assets, override it with a separate subfolder such as:
+
+```text
+worldmodel/webgpu-inference/browser-model/<checkpoint-stem>/
 ```
 
 unless overridden with:
@@ -372,10 +414,10 @@ That is the easiest way to test alternate hosted assets.
 
 The exported ONNX model was checked against the PyTorch model.
 
-For the current `fp16` export:
+For the current verified `pointing_cvae` `fp16` export:
 
-- max absolute difference: about `0.000505984`
-- mean absolute difference: about `0.000009628`
+- max absolute difference: about `0.002496302`
+- mean absolute difference: about `0.000008987`
 
 That is small enough for this current demo path.
 
@@ -383,7 +425,7 @@ That is small enough for this current demo path.
 
 The export step does not require an NVIDIA GPU.
 
-It was run on the MacBook CPU successfully.
+It was run on the MacBook CPU successfully, even though the checkpoint itself came from a different remote training environment.
 
 That means:
 

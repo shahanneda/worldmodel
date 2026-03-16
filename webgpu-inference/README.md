@@ -1,6 +1,6 @@
 # WebGPU Inference
 
-This folder is a separate browser-side inference path for the current coordinate-to-image model.
+This folder is a separate browser-side inference path for the current coordinate-to-image checkpoints.
 
 It does not touch the existing Flask server stack under `inference/`.
 
@@ -11,6 +11,32 @@ It does not touch the existing Flask server stack under `inference/`.
 - runs inference in the browser with `WebGPU` when available
 - falls back to `wasm` if `WebGPU` is unavailable
 
+The browser export path works for both:
+
+- `coord_to_image_unet`
+- `pointing_cvae`
+
+For `pointing_cvae`, the browser graph uses deterministic prior-mean decoding.
+
+## Current default deployment
+
+The static frontend currently points at this exported checkpoint:
+
+- `model/checkpoints/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z.pt`
+
+Current default manifest URL:
+
+```text
+https://zimpmodels.s3.us-east-2.amazonaws.com/worldmodel/webgpu-inference/browser-model/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z/manifest.json
+```
+
+Verified export details for that checkpoint:
+
+- `fp16` total browser model size: `247,914,279` bytes
+- ONNX Runtime parity check:
+  - `max_abs_diff=0.002496302`
+  - `mean_abs_diff=0.000008987`
+
 ## Export the model
 
 Use a Python environment with:
@@ -20,12 +46,30 @@ Use a Python environment with:
 - `onnxruntime`
 - `onnxscript`
 - `onnxconverter-common`
+- `numpy`
+- `pillow`
+
+## Environment notes
+
+The checkpoint was trained in a different environment from the one used for browser export.
+
+- Remote training environment:
+  - Linux server
+  - NVIDIA GPU / CUDA used for training
+  - used to produce the original `.pt` checkpoint
+- Local browser-export environment:
+  - macOS on the laptop
+  - CPU-only export and verification
+  - temporary venv used here: `/tmp/worldmodel-webgpu-venv`
+  - AWS CLI used locally to upload the exported browser assets to S3
+
+The browser export does not require CUDA. As long as the checkpoint file is already available locally, the Mac can export and upload it. A local conda env with the same packages is also fine if you do not want to use a temporary venv.
 
 From the repo root:
 
 ```bash
-python scripts/export_webgpu_model.py \
-  --checkpoint model/checkpoints/coord_to_image_unet_2026-03-13T19-20-32Z.pt \
+/tmp/worldmodel-webgpu-venv/bin/python scripts/export_webgpu_model.py \
+  --checkpoint model/checkpoints/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z.pt \
   --output-dir webgpu-inference/model \
   --precision fp16
 ```
@@ -56,15 +100,11 @@ Do not open the page with `file://`.
 
 ## Hosting notes
 
-The export works, but the current model is large:
+The export works, but the current deployed checkpoint is still large:
 
-- `fp32` export: about `763 MB`
-- `fp16` export: about `400 MB`
+- current `fp16` export: about `248 MB`
 
-The main reason is a very large tensor in `skip_projections.3.weight`:
-
-- `512 MB` in `fp32`
-- `256 MB` in `fp16`
+An earlier deterministic baseline export was about `400 MB` in `fp16`, so export size depends heavily on the architecture and channel counts.
 
 So the static frontend is ready, but GitHub Pages is only realistic if you:
 
@@ -90,6 +130,7 @@ Example:
 ```bash
 export S3_BUCKET=your-bucket
 export S3_PREFIX=worldmodel
+export WEBGPU_S3_PREFIX='worldmodel/webgpu-inference/browser-model/your-checkpoint-name'
 export WEBGPU_CORS_ALLOWED_ORIGINS='https://yourname.github.io,http://127.0.0.1:5174,http://localhost:5174'
 python scripts/s3_configure_webgpu_public_access.py
 python scripts/s3_upload_webgpu_assets.py
