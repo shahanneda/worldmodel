@@ -55,6 +55,18 @@ Run the committed smoke config:
 /venv/main/bin/python3 scripts/train_from_config.py configs/pointing_cvae_smoke.yaml
 ```
 
+Run the March-only `SMALL` iteration config:
+
+```bash
+/venv/main/bin/python3 scripts/train_from_config.py configs/pointing_cvae_march_small_v1.yaml
+```
+
+Run the March-only `BIG` long-run config:
+
+```bash
+/venv/main/bin/python3 scripts/train_from_config.py configs/pointing_cvae_march_big_v1.yaml
+```
+
 Training auto-loads the repo-root `.env` before initializing W&B, so `WANDB_API_KEY` does not need to be manually sourced for normal training runs.
 
 Run a config with a few overrides:
@@ -251,6 +263,16 @@ Supported values:
   - coordinate-conditioned latent prior
   - reused U-Net decoder fed with concatenated `[coord, z]`
 
+Two committed March-only presets now sit on top of that same model family:
+
+- `SMALL`
+  - `64x64`
+  - faster iteration and denser validation previews
+- `BIG`
+  - `128x128`
+  - wider latent decoder and larger latent space
+  - intended for longer training runs with preview logging every 10 epochs
+
 Additional latent-model fields:
 
 - `latent_dim`
@@ -302,6 +324,13 @@ Current checkpoints embed:
 - split artifact reference
 - model hyperparameters actually instantiated
 - training history
+
+Checkpoint configs can also opt into periodic saves with:
+
+- `checkpointing.save_every_n_epochs`
+- `checkpointing.save_every_n_optimizer_steps`
+
+When an epoch value is available, newer checkpoint filenames include an `epochNNNN` token for easier browsing.
 
 For backward compatibility, a flattened compatibility `extra` payload is still saved too.
 

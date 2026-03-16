@@ -78,6 +78,14 @@ def _clone_state_dict_to_cpu(model_state_dict: dict[str, Tensor]) -> dict[str, T
     return {name: tensor.detach().cpu().clone() for name, tensor in model_state_dict.items()}
 
 
+def _epoch_token(epoch: int | None) -> str:
+    return f"epoch{epoch:04d}" if epoch is not None else "epochunknown"
+
+
+def _optimizer_step_token(optimizer_step: int | None) -> str:
+    return f"step{optimizer_step:06d}" if optimizer_step is not None else "nostep"
+
+
 def _set_reproducibility(seed: int, *, deterministic: bool) -> None:
     random.seed(seed)
     torch.manual_seed(seed)
@@ -769,6 +777,7 @@ def save_checkpoint(
     version: str | None = None,
     checkpoint_root: str | Path = "model/checkpoints",
     filename_template: str | None = None,
+    filename_run_name: str | None = None,
     model_state_dict: Optional[dict[str, Tensor]] = None,
     training_config: Optional[TrainingConfig] = None,
     split_artifact_path: Optional[Path] = None,
@@ -780,7 +789,7 @@ def save_checkpoint(
         Path(checkpoint_path)
         if checkpoint_path is not None
         else make_checkpoint_path(
-            run_name=run_name,
+            run_name=filename_run_name or run_name,
             version=version,
             root=checkpoint_root,
             filename_template=filename_template,
@@ -1052,6 +1061,7 @@ def run_training_from_config(config: TrainingConfig) -> TrainingRunResult:
             version=config.version,
             checkpoint_root=config.paths.checkpoint_root,
             filename_template=config.checkpointing.filename_template,
+            filename_run_name=f"{config.experiment.run_name}_{_optimizer_step_token(optimizer_step_number)}",
             training_config=config,
             split_artifact_path=split_artifact_path,
             resolved_config_path=resolved_config_path,
@@ -1094,6 +1104,7 @@ def run_training_from_config(config: TrainingConfig) -> TrainingRunResult:
             version=config.version,
             checkpoint_root=config.paths.checkpoint_root,
             filename_template=config.checkpointing.filename_template,
+            filename_run_name=f"{config.experiment.run_name}_{_epoch_token(epoch_number)}",
             training_config=config,
             split_artifact_path=split_artifact_path,
             resolved_config_path=resolved_config_path,
@@ -1130,6 +1141,10 @@ def run_training_from_config(config: TrainingConfig) -> TrainingRunResult:
                 version=config.version,
                 checkpoint_root=config.paths.checkpoint_root,
                 filename_template=config.checkpointing.filename_template,
+                filename_run_name=(
+                    f"{config.experiment.run_name}_final_"
+                    f"{_epoch_token(len(loop_artifacts.history.train_losses))}"
+                ),
                 training_config=config,
                 split_artifact_path=split_artifact_path,
                 resolved_config_path=resolved_config_path,
@@ -1152,6 +1167,10 @@ def run_training_from_config(config: TrainingConfig) -> TrainingRunResult:
                 version=config.version,
                 checkpoint_root=config.paths.checkpoint_root,
                 filename_template=config.checkpointing.filename_template,
+                filename_run_name=(
+                    f"{config.experiment.run_name}_best_"
+                    f"{_epoch_token(loop_artifacts.best_epoch)}"
+                ),
                 model_state_dict=loop_artifacts.best_state_dict,
                 training_config=config,
                 split_artifact_path=split_artifact_path,

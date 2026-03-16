@@ -16,6 +16,8 @@ Current status:
 - `configs/coord_to_image_unet_smoke.yaml` is the small verification config
 - `configs/pointing_cvae_v1.yaml` is the latent posterior/prior training config
 - `configs/pointing_cvae_smoke.yaml` is the small latent-path verification config
+- `configs/pointing_cvae_march_small_v1.yaml` is the March-only `SMALL` latent config for faster iteration
+- `configs/pointing_cvae_march_big_v1.yaml` is the March-only `BIG` latent config for longer `128x128` training
 - `scripts/train_from_config.py` is the primary command-line entrypoint
 - `model/workspace.ipynb` loads one config and uses the same Python training path
 - committed configs include a `wandb:` section so training logs to Weights & Biases by default
