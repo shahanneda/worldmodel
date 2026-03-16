@@ -22,20 +22,40 @@ For `pointing_cvae`, the browser graph uses deterministic prior-mean decoding.
 
 The static frontend currently points at this exported checkpoint:
 
-- `model/checkpoints/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z.pt`
+- `model/checkpoints/ckpt000045_finger_xy_cvae_march_BIG_v1_pointing_cvae_best_epoch0195_2026-03-16T02-29-47Z.pt`
+
+As of March 16, 2026, this is the latest checkpoint available locally and in S3. There is not an `epoch0200` checkpoint present yet.
 
 Current default manifest URL:
 
 ```text
-https://zimpmodels.s3.us-east-2.amazonaws.com/worldmodel/webgpu-inference/browser-model/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z/manifest.json
+https://zimpmodels.s3.us-east-2.amazonaws.com/worldmodel/webgpu-inference/browser-model/ckpt000045_finger_xy_cvae_march_BIG_v1_pointing_cvae_best_epoch0195_2026-03-16T02-29-47Z/manifest.json
 ```
 
 Verified export details for that checkpoint:
 
-- `fp16` total browser model size: `247,914,279` bytes
+- `fp16` total browser model size: `247,914,419` bytes
 - ONNX Runtime parity check:
-  - `max_abs_diff=0.002496302`
-  - `mean_abs_diff=0.000008987`
+  - `max_abs_diff=0.001909256`
+  - `mean_abs_diff=0.000010511`
+
+The frontend also includes a built-in checkpoint picker with:
+
+- `Pointing CVAE · March BIG v1 · best epoch 195`
+- `Pointing CVAE · March BIG v1 · epoch 150`
+- `Baseline U-Net · March 13 export`
+- a persisted stage layout toggle that can overlay the generated frame directly under the input grid
+
+## Browser caching
+
+The static app now keeps a small best-effort local cache of downloaded ONNX assets.
+
+- cache keying is based on the asset URLs, so unique checkpoint filenames produce separate cache entries
+- only a small number of checkpoints are kept locally
+- current cap: `2` checkpoints
+- if a checkpoint URL changes, the browser treats it as a new asset and fetches it again
+
+This cache is only for model graph/data downloads. It does not cache generated images.
 
 ## Export the model
 
@@ -69,7 +89,7 @@ From the repo root:
 
 ```bash
 /tmp/worldmodel-webgpu-venv/bin/python scripts/export_webgpu_model.py \
-  --checkpoint model/checkpoints/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z.pt \
+  --checkpoint model/checkpoints/ckpt000045_finger_xy_cvae_march_BIG_v1_pointing_cvae_best_epoch0195_2026-03-16T02-29-47Z.pt \
   --output-dir webgpu-inference/model \
   --precision fp16
 ```
@@ -80,7 +100,7 @@ That writes:
 - `webgpu-inference/model/*.onnx`
 - `webgpu-inference/model/*.onnx.data`
 
-The app loads `./model/manifest.json` by default.
+The app loads the selected checkpoint manifest by default, and still supports a custom manifest URL when you want to point at another host.
 
 ## Run locally
 

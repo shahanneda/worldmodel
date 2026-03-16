@@ -79,7 +79,7 @@ The current browser path works with the newer latent checkpoint too.
 Most recently verified export:
 
 - checkpoint:
-  - `model/checkpoints/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z.pt`
+  - `model/checkpoints/ckpt000045_finger_xy_cvae_march_BIG_v1_pointing_cvae_best_epoch0195_2026-03-16T02-29-47Z.pt`
 - model kind:
   - `pointing_cvae`
 - image size:
@@ -89,10 +89,12 @@ Most recently verified export:
 - precision:
   - `fp16`
 - total browser model size:
-  - `247,914,279` bytes
+  - `247,914,419` bytes
 - ONNX Runtime parity check:
-  - `max_abs_diff=0.002496302`
-  - `mean_abs_diff=0.000008987`
+  - `max_abs_diff=0.001909256`
+  - `mean_abs_diff=0.000010511`
+
+As of March 16, 2026, this `best_epoch0195` checkpoint is the latest one present both locally and in the S3 checkpoint bucket. There is no `epoch0200` checkpoint available yet.
 
 Earlier exports from the deterministic baseline were significantly larger, so hosting constraints still matter, but the newer checkpoint is materially smaller than the first browser export.
 
@@ -134,6 +136,14 @@ The app defaults to:
 unless `webgpu-inference/runtime-config.js` points elsewhere.
 
 The manifest URL can also be changed in the UI or via query param.
+
+The frontend now also supports:
+
+- a named checkpoint picker for switching between multiple known manifests
+- a stage layout toggle that can merge the input grid and generated frame into one stacked stage
+- a small best-effort local asset cache so previously downloaded checkpoints do not need to be fetched again every time
+
+The cache is intentionally bounded. Right now it keeps at most `2` checkpoints locally.
 
 ## How to repeat the whole process
 
@@ -199,7 +209,7 @@ From the repo root:
 
 ```bash
 /tmp/worldmodel-webgpu-venv/bin/python scripts/export_webgpu_model.py \
-  --checkpoint model/checkpoints/ckpt000042_finger_xy_cvae_march_BIG_v1_pointing_cvae_epoch0150_2026-03-16T02-00-21Z.pt \
+  --checkpoint model/checkpoints/ckpt000045_finger_xy_cvae_march_BIG_v1_pointing_cvae_best_epoch0195_2026-03-16T02-29-47Z.pt \
   --output-dir webgpu-inference/model \
   --precision fp16
 ```
@@ -374,11 +384,11 @@ The upload script:
 The page now checks manifest URLs in this order:
 
 1. `?manifest=...` query param
-2. `webgpu-inference/runtime-config.js`
-3. last saved manifest URL in browser storage
+2. last saved manifest URL in browser storage
+3. `webgpu-inference/runtime-config.js`
 4. local `./model/manifest.json`
 
-So after running the upload script and deploying the updated frontend, the page will automatically load from S3.
+So after running the upload script and deploying the updated frontend, the page will automatically load from S3 unless the user has already picked and saved a different checkpoint in the browser.
 
 ## Hosting options
 
@@ -416,8 +426,8 @@ The exported ONNX model was checked against the PyTorch model.
 
 For the current verified `pointing_cvae` `fp16` export:
 
-- max absolute difference: about `0.002496302`
-- mean absolute difference: about `0.000008987`
+- max absolute difference: about `0.001909256`
+- mean absolute difference: about `0.000010511`
 
 That is small enough for this current demo path.
 

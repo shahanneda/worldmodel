@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -87,6 +88,27 @@ def _load_json(path: Path) -> dict[str, Any]:
     return payload
 
 
+def _load_runtime_config(runtime_config_path: Path) -> dict[str, Any]:
+    if not runtime_config_path.exists():
+        return {}
+
+    payload = runtime_config_path.read_text(encoding="utf-8")
+    match = re.search(
+        r"window\.WORLDMODEL_WEBGPU_CONFIG\s*=\s*(\{.*\})\s*;\s*$",
+        payload,
+        re.DOTALL,
+    )
+    if match is None:
+        return {}
+
+    try:
+        parsed = json.loads(match.group(1))
+    except json.JSONDecodeError:
+        return {}
+
+    return parsed if isinstance(parsed, dict) else {}
+
+
 def _local_path_from_manifest_url(base_dir: Path, url: str) -> Path:
     parsed = urlparse(url)
     if parsed.scheme or parsed.netloc:
@@ -102,11 +124,29 @@ def _local_path_from_manifest_url(base_dir: Path, url: str) -> Path:
 
 def _write_runtime_config(runtime_config_path: Path, manifest_url: str) -> None:
     runtime_config_path.parent.mkdir(parents=True, exist_ok=True)
-    content = (
-        "window.WORLDMODEL_WEBGPU_CONFIG = {\n"
-        f"  manifestUrl: {json.dumps(manifest_url)},\n"
-        "};\n"
-    )
+    existing = _load_runtime_config(runtime_config_path)
+    previous_manifest_url = existing.get("manifestUrl")
+    content_payload = dict(existing)
+    checkpoints = content_payload.get("checkpoints")
+    default_checkpoint_id = content_payload.get("defaultCheckpointId")
+
+    if isinstance(checkpoints, list):
+        updated_entry: dict[str, Any] | None = None
+        if isinstance(default_checkpoint_id, str):
+            for entry in checkpoints:
+                if isinstance(entry, dict) and entry.get("id") == default_checkpoint_id:
+                    updated_entry = entry
+                    break
+        if updated_entry is None and isinstance(previous_manifest_url, str):
+            for entry in checkpoints:
+                if isinstance(entry, dict) and entry.get("manifestUrl") == previous_manifest_url:
+                    updated_entry = entry
+                    break
+        if updated_entry is not None:
+            updated_entry["manifestUrl"] = manifest_url
+
+    content_payload["manifestUrl"] = manifest_url
+    content = "window.WORLDMODEL_WEBGPU_CONFIG = " + json.dumps(content_payload, indent=2) + ";\n"
     runtime_config_path.write_text(content, encoding="utf-8")
 
 

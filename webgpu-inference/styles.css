@@ -130,6 +130,14 @@ h2 {
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
 }
 
+.stage-grid.is-stacked {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.stage-grid.is-stacked .output-card {
+  display: none;
+}
+
 .card {
   background: var(--panel);
   border: 1px solid rgba(255, 255, 255, 0.6);
@@ -148,6 +156,14 @@ h2 {
   margin-bottom: 16px;
 }
 
+.stage-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
 .field {
   display: grid;
   gap: 8px;
@@ -163,17 +179,92 @@ h2 {
 }
 
 input,
+select,
 button {
   font: inherit;
 }
 
-input {
+input,
+select {
   width: 100%;
   border: 1px solid var(--line);
   border-radius: 14px;
   background: var(--panel-strong);
   color: var(--ink);
   padding: 14px 16px;
+}
+
+select {
+  appearance: none;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+    linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+  background-position:
+    calc(100% - 24px) calc(50% - 3px),
+    calc(100% - 18px) calc(50% - 3px);
+  background-size: 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 42px;
+}
+
+.layout-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: rgba(255, 252, 246, 0.72);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.layout-toggle span {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.layout-toggle input {
+  width: 42px;
+  min-width: 42px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  appearance: none;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(27, 23, 19, 0.16);
+  position: relative;
+  cursor: pointer;
+  transition: background 140ms ease;
+}
+
+.layout-toggle input::before {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #fff8f1;
+  box-shadow: 0 1px 4px rgba(27, 23, 19, 0.24);
+  transition: transform 140ms ease;
+}
+
+.layout-toggle input:checked {
+  background: rgba(199, 79, 45, 0.9);
+}
+
+.layout-toggle input:checked::before {
+  transform: translateX(18px);
+}
+
+.layout-toggle input:focus-visible {
+  outline: 2px solid rgba(199, 79, 45, 0.4);
+  outline-offset: 2px;
 }
 
 button {
@@ -262,9 +353,17 @@ progress {
   cursor: crosshair;
 }
 
+.stage-output-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
 .input-stage .grid {
   position: absolute;
   inset: 0;
+  z-index: 1;
   background-image:
     linear-gradient(rgba(27, 23, 19, 0.06) 1px, transparent 1px),
     linear-gradient(90deg, rgba(27, 23, 19, 0.06) 1px, transparent 1px);
@@ -276,6 +375,7 @@ progress {
   width: 34px;
   height: 34px;
   transform: translate(-50%, -50%);
+  z-index: 3;
   border-radius: 50%;
   border: 2px solid rgba(255, 255, 255, 0.85);
   box-shadow:
@@ -309,9 +409,11 @@ progress {
 
 .orb {
   position: absolute;
+  z-index: 2;
   border-radius: 999px;
   filter: blur(10px);
   opacity: 0.65;
+  pointer-events: none;
 }
 
 .orb-a {
@@ -337,16 +439,20 @@ progress {
 }
 
 #outputCanvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
   object-fit: contain;
   image-rendering: auto;
+  pointer-events: none;
 }
 
 .placeholder {
   position: absolute;
   inset: 0;
+  z-index: 1;
   display: grid;
   place-items: center;
   padding: 32px;
@@ -356,6 +462,7 @@ progress {
   color: var(--muted);
   background:
     linear-gradient(180deg, rgba(255, 252, 246, 0.82), rgba(239, 225, 204, 0.72));
+  pointer-events: none;
 }
 
 code {
@@ -378,6 +485,15 @@ code {
   .top-grid,
   .stage-grid {
     grid-template-columns: 1fr;
+  }
+
+  .card-head {
+    align-items: flex-start;
+  }
+
+  .stage-actions {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .shell {

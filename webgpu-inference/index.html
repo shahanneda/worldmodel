@@ -10,13 +10,13 @@
       href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&family=Space+Grotesk:wght@400;500;700&display=swap"
       rel="stylesheet"
     />
-    <link rel="stylesheet" href="./styles.css?v=20260313-1" />
+    <link rel="stylesheet" href="./styles.css?v=20260316-2" />
     <script
       defer
       src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.24.3/dist/ort.all.min.js"
     ></script>
-    <script defer src="./runtime-config.js?v=20260316-1"></script>
-    <script defer src="./app.js?v=20260313-2"></script>
+    <script defer src="./runtime-config.js?v=20260316-3"></script>
+    <script defer src="./app.js?v=20260316-2"></script>
   </head>
   <body>
     <main class="shell">
@@ -40,6 +40,12 @@
             <h2>Model manifest</h2>
             <button id="loadManifestButton" type="button">Load model</button>
           </div>
+          <label class="field" for="checkpointSelect">
+            <span>Checkpoint</span>
+            <select id="checkpointSelect">
+              <option>Loading checkpoint options...</option>
+            </select>
+          </label>
           <label class="field" for="manifestUrlInput">
             <span>Manifest URL</span>
             <input
@@ -50,8 +56,9 @@
             />
           </label>
           <p class="hint">
-            By default the page reads <code>runtime-config.js</code>. Use a different URL here if
-            the ONNX files live on another static host.
+            Pick a named checkpoint to switch models, or choose <code>Custom manifest URL</code>
+            to paste another manifest. Downloaded model assets are kept in a small local cache so
+            reloading the same checkpoint usually avoids downloading it again.
           </p>
           <div class="status-stack">
             <div class="metric">
@@ -97,13 +104,20 @@
         </article>
       </section>
 
-      <section class="stage-grid">
+      <section class="stage-grid" id="stageGrid">
         <article class="card stage-card">
           <div class="card-head">
             <h2>Input stage</h2>
-            <button id="rerunButton" type="button" disabled>Run current point</button>
+            <div class="stage-actions">
+              <label class="layout-toggle" for="stageLayoutToggle">
+                <input id="stageLayoutToggle" type="checkbox" />
+                <span>Stack over output</span>
+              </label>
+              <button id="rerunButton" type="button" disabled>Run current point</button>
+            </div>
           </div>
           <div class="input-stage" id="inputStage" aria-label="Coordinate input stage">
+            <div class="stage-output-layer" id="stageOutputLayer"></div>
             <div class="grid"></div>
             <div class="crosshair" id="crosshair"></div>
             <div class="orb orb-a"></div>
@@ -111,13 +125,14 @@
           </div>
           <p class="hint">
             Click or drag inside the stage. The point is normalized to <code>[0, 1]</code> before
-            inference.
+            inference. Turn on <code>Stack over output</code> to overlay the generated frame under
+            the grid, like the server-side app.
           </p>
         </article>
 
         <article class="card output-card">
           <h2>Generated frame</h2>
-          <div class="output-frame">
+          <div class="output-frame" id="outputFrame">
             <canvas id="outputCanvas" width="128" height="128"></canvas>
             <div class="placeholder" id="outputPlaceholder">
               Load a manifest, then click the stage to run local inference.
